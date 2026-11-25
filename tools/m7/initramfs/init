@@ -26,6 +26,7 @@ gadget=/config/usb_gadget/m7
 mkdir -p "$gadget"
 echo 0x18d1 > "$gadget/idVendor"
 echo 0x4ee7 > "$gadget/idProduct"
+mkdir -p "$gadget/strings/0x409"
 echo "HTC" > "$gadget/strings/0x409/manufacturer"
 echo "HTC One M7" > "$gadget/strings/0x409/product"
 mkdir -p "$gadget/functions/acm.usb0" "$gadget/configs/c.1"
@@ -41,7 +42,7 @@ done
 
 {
 	echo
-	echo "HTC One M7 — mainline Linux"
+	echo "HTC One M7, mainline Linux"
 	echo "M7_READY_BEGIN"
 	echo "M7_KERNEL=$(uname -r)"
 	echo "M7_CMDLINE=$(cat /proc/cmdline)"

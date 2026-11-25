@@ -7,16 +7,17 @@ mainline tree maintained at
 
 ## Status
 
-**2026-11-25: kernel and device tree build. The first `fastboot boot` uploaded
-the image, then the locked bootloader rejected it with `not allowed`.**
+**2026-11-25: kernel and device tree build. HTCdev unlock succeeded. The
+current blocker is the HBOOT/USB path: `fastboot boot` returns to fastboot even
+for a verified TWRP image, and recovery flashes fail during USB transfer.**
 
 The imported basis is Linux 7.1.0 at upstream commit
 `15fbd13fe2475cf77fca0006b618bb5c929025bd`. The first device tree enables:
 
-- APQ8064 / Krait 300 and 2 GiB of RAM
+- APQ8064 / Krait 300 and 2 GiB of RAM, with the usable bank at `0x80600000`
 - PM8921 + PM8821 and the M7 regulator voltages
 - eMMC on SDCC1
-- USB peripheral on HSUSB1, for a CDC ACM maintenance console
+- USB peripheral on HSUSB1, with a built-in `g_serial` console for early logs
 - volume keys and reboot-mode handling
 
 Display, touchscreen, audio, wireless, modem and cameras are not enabled yet.
@@ -48,21 +49,21 @@ cannot hide the maintenance console.
 
 ## Hardware test
 
-The test unit is currently **S-ON with a locked bootloader**. HTCdev still
-lists the M7, but unlocking erases all user data. Back up first and accept the
-unlock explicitly. No S-OFF exploit or third-party unlock service is part of
-this project.
+The test unit is **S-ON and UNLOCKED** after the official HTCdev procedure.
+S-ON remains set by design and protects the radio and SIM lock. No S-OFF
+exploit or third-party unlock service is part of this project.
 
-After an official HTCdev unlock, test without writing any partition:
+`fastboot boot` is not a reliable first test on this HBOOT. A verified TWRP
+image returned `Booting OKAY` and then immediately reappeared in fastboot,
+without adb or a serial console. Recovery flashing currently fails during USB
+transfer with `No such file or directory` or `Protocol error`. Use a USB 2.0
+port or hub, reset HBOOT with the hardware keys, and validate the write path
+before testing the mainline image.
 
-```sh
-fastboot boot build/m7/boot.img
-```
-
-The host should expose `/dev/ttyACM0`. Open it at 115200 baud with `screen`,
-`picocom`, or another serial terminal. The initramfs emits a machine-readable
-ready block, replays `dmesg` and opens a root shell. It does not mount or modify
-eMMC.
+After the transport is stable, flash a known-good recovery first, then test
+the mainline image through the `boot` partition. The initramfs emits a
+machine-readable ready block, replays `dmesg` and opens a root shell over
+`/dev/ttyACM0`. It does not mount or modify eMMC.
 
 For a recorded one-shot run:
 

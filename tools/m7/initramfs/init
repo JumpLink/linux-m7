@@ -15,23 +15,25 @@ mount -t devpts devpts /dev/pts
 
 hostname m7
 
-# The APQ8064 USB controller is already in peripheral mode in the DT.
+# A built-in g_serial gadget may already own the UDC. Otherwise create ACM.
 udc=$(ls /sys/class/udc 2>/dev/null | head -n 1)
 if [ -z "$udc" ]; then
 	echo "m7-init: no USB device controller found" > /dev/console
 	exec /bin/busybox sh
 fi
 
-gadget=/config/usb_gadget/m7
-mkdir -p "$gadget"
-echo 0x18d1 > "$gadget/idVendor"
-echo 0x4ee7 > "$gadget/idProduct"
-mkdir -p "$gadget/strings/0x409"
-echo "HTC" > "$gadget/strings/0x409/manufacturer"
-echo "HTC One M7" > "$gadget/strings/0x409/product"
-mkdir -p "$gadget/functions/acm.usb0" "$gadget/configs/c.1"
-ln -s "$gadget/functions/acm.usb0" "$gadget/configs/c.1/acm.usb0"
-echo "$udc" > "$gadget/UDC"
+if [ ! -e /dev/ttyGS0 ]; then
+	gadget=/config/usb_gadget/m7
+	mkdir -p "$gadget"
+	echo 0x18d1 > "$gadget/idVendor"
+	echo 0x4ee7 > "$gadget/idProduct"
+	mkdir -p "$gadget/strings/0x409"
+	echo "HTC" > "$gadget/strings/0x409/manufacturer"
+	echo "HTC One M7" > "$gadget/strings/0x409/product"
+	mkdir -p "$gadget/functions/acm.usb0" "$gadget/configs/c.1"
+	ln -s "$gadget/functions/acm.usb0" "$gadget/configs/c.1/acm.usb0"
+	echo "$udc" > "$gadget/UDC"
+fi
 
 # Wait for the gadget to enumerate, then replay the kernel log and open a shell.
 i=0

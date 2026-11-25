@@ -30,15 +30,21 @@ if readelf -l "$busybox" | grep -q 'INTERP'; then
 	exit 1
 fi
 
+cmdline=${M7_CMDLINE:-"console=ttyGS0 root=/dev/ram0 rw init=/init loglevel=7 ignore_loglevel"}
+dtb_name=${M7_DTB:-qcom-apq8064-htc-m7ul}
+
 mkdir -p "$build"
 if [ "${SKIP_KERNEL_BUILD:-0}" != 1 ]; then
 	make -C "$root" O="$build" ARCH=arm CROSS_COMPILE="$cross" m7_defconfig
+	if [ -n "${M7_CMDLINE:-}" ]; then
+		"$root/scripts/config" --file "$build/.config" --set-str CONFIG_CMDLINE "$cmdline"
+		make -C "$root" O="$build" ARCH=arm CROSS_COMPILE="$cross" olddefconfig
+	fi
 	make -C "$root" O="$build" ARCH=arm CROSS_COMPILE="$cross" -j"$jobs" zImage
 	make -C "$root" O="$build" ARCH=arm CROSS_COMPILE="$cross" -j"$jobs" dtbs
 fi
-
 kernel=$build/arch/arm/boot/zImage
-dtb=$build/arch/arm/boot/dts/qcom/qcom-apq8064-htc-m7ul.dtb
+dtb=$build/arch/arm/boot/dts/qcom/$dtb_name.dtb
 [ -s "$kernel" ] && [ -s "$dtb" ] && [ -s "$build/vmlinux" ] || {
 	echo "missing kernel artifacts in $build" >&2
 	exit 1
@@ -72,12 +78,12 @@ mkbootimg \
 	--pagesize 2048 \
 	--header_version 0 \
 	--board m7 \
-	--cmdline 'console=ttyGS0 root=/dev/ram0 rw init=/init loglevel=7 ignore_loglevel' \
+	--cmdline "$cmdline" \
 	--output "$build/boot.img"
 
 sha256sum "$build/boot.img" "$build/zImage-dtb" "$dtb" "$build/initramfs.cpio.gz" "$build/.config" > "$build/SHA256SUMS"
 
-python3 - "$build" "$root" <<'PY'
+python3 - "$build" "$root" "$cmdline" "$dtb_name" <<'PY'
 import datetime
 import hashlib
 import json
@@ -87,6 +93,8 @@ import sys
 
 build = pathlib.Path(sys.argv[1])
 root = pathlib.Path(sys.argv[2])
+cmdline = sys.argv[3]
+dtb_name = sys.argv[4]
 
 def digest(path):
     h = hashlib.sha256()
@@ -122,13 +130,14 @@ manifest = {
     "image": {
         "boot_sha256": digest(build / "boot.img"),
         "zimage_dtb_sha256": digest(build / "zImage-dtb"),
-        "dtb_sha256": digest(build / "arch/arm/boot/dts/qcom/qcom-apq8064-htc-m7ul.dtb"),
+        "dtb": dtb_name,
+        "dtb_sha256": digest(build / "arch/arm/boot/dts/qcom" / (dtb_name + ".dtb")),
         "initramfs_sha256": digest(build / "initramfs.cpio.gz"),
         "base": "0x80600000",
         "kernel_offset": "0x00008000",
         "ramdisk_offset": "0x01800000",
         "pagesize": 2048,
-        "cmdline": "console=ttyGS0 root=/dev/ram0 rw init=/init loglevel=7 ignore_loglevel",
+        "cmdline": cmdline,
         "debug_channel": "usb-acm",
     },
 }

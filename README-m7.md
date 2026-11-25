@@ -7,7 +7,8 @@ mainline tree maintained at
 
 ## Status
 
-**2026-11-25: kernel and device tree build; not yet booted on hardware.**
+**2026-11-25: kernel and device tree build. The first `fastboot boot` uploaded
+the image, then the locked bootloader rejected it with `not allowed`.**
 
 The imported basis is Linux 7.1.0 at upstream commit
 `15fbd13fe2475cf77fca0006b618bb5c929025bd`. The first device tree enables:

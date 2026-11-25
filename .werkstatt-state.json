@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "name": "linux-m7",
+  "description": "Generated kernel and boot-image artifacts for the HTC One M7 mainline port.",
+  "entries": [
+    {
+      "path": "build",
+      "class": "derived",
+      "why": "Kernel objects, DTBs, initramfs and boot images are reproducible from source.",
+      "recreate": "BUSYBOX=/path/to/static-arm-busybox ./tools/m7/build.sh"
+    }
+  ]
+}

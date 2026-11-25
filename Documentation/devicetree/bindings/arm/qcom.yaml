@@ -38,6 +38,7 @@ properties:
       - items:
           - enum:
               - asus,nexus7-flo
+              - htc,m7ul
               - lg,nexus4-mako
               - sony,xperia-yuga
               - qcom,apq8064-cm-qs600

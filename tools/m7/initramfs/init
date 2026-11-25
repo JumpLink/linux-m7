@@ -1,0 +1,65 @@
+#!/bin/busybox sh
+# First-boot initramfs for the HTC One M7 mainline port.
+# It exposes a root shell over USB CDC ACM without touching the eMMC.
+
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+export HOME=/root
+export TERM=linux
+
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+mkdir -p /config /run /tmp
+mount -t configfs configfs /config
+mount -t devpts devpts /dev/pts
+
+hostname m7
+
+# The APQ8064 USB controller is already in peripheral mode in the DT.
+udc=$(ls /sys/class/udc 2>/dev/null | head -n 1)
+if [ -z "$udc" ]; then
+	echo "m7-init: no USB device controller found" > /dev/console
+	exec /bin/busybox sh
+fi
+
+gadget=/config/usb_gadget/m7
+mkdir -p "$gadget"
+echo 0x18d1 > "$gadget/idVendor"
+echo 0x4ee7 > "$gadget/idProduct"
+echo "HTC" > "$gadget/strings/0x409/manufacturer"
+echo "HTC One M7" > "$gadget/strings/0x409/product"
+mkdir -p "$gadget/functions/acm.usb0" "$gadget/configs/c.1"
+ln -s "$gadget/functions/acm.usb0" "$gadget/configs/c.1/acm.usb0"
+echo "$udc" > "$gadget/UDC"
+
+# Wait for the gadget to enumerate, then replay the kernel log and open a shell.
+i=0
+while [ ! -e /dev/ttyGS0 ] && [ "$i" -lt 50 ]; do
+	sleep 0.1
+	i=$((i + 1))
+done
+
+{
+	echo
+	echo "HTC One M7 — mainline Linux"
+	echo "M7_READY_BEGIN"
+	echo "M7_KERNEL=$(uname -r)"
+	echo "M7_CMDLINE=$(cat /proc/cmdline)"
+	echo "M7_DT_MODEL=$(cat /proc/device-tree/model)"
+	echo "M7_DT_COMPATIBLE=$(tr '\0' ' ' < /proc/device-tree/compatible)"
+	echo "M7_UPTIME=$(cut -d' ' -f1 /proc/uptime)"
+	echo "M7_UDC=$udc"
+	echo "M7_UDC_STATE=$(cat /sys/class/udc/$udc/state 2>/dev/null)"
+	if grep -q mmcblk0 /proc/partitions; then
+		echo "M7_EMMC_PRESENT=yes"
+	else
+		echo "M7_EMMC_PRESENT=no"
+	fi
+	echo "M7_READY_END"
+	echo
+	dmesg
+} > /dev/ttyGS0 2>&1
+
+while true; do
+	/bin/busybox sh -l < /dev/ttyGS0 > /dev/ttyGS0 2>&1
+done

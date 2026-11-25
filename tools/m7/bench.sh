@@ -3,12 +3,32 @@ set -euo pipefail
 
 # One-shot mainline boot test with a benchmark-friendly run manifest.
 # Usage: FASTBOOT_SERIAL=... ./tools/m7/bench.sh [boot.img] [run-dir]
+# Set M7_BOOT_METHOD=flash to write the boot partition and reboot. The flash
+# path accepts only the boot partition, never recovery or userdata.
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
 image=${1:-"$root/build/m7/boot.img"}
 run=${2:-"$root/build/m7/runs/$(date -u +%Y%m%dT%H%M%SZ)"}
 duration=${DURATION:-30}
 serial=${FASTBOOT_SERIAL:-}
+method=${M7_BOOT_METHOD:-boot}
+partition=
+
+case "$method" in
+	boot)
+		;;
+	flash)
+		partition=${M7_PARTITION:-boot}
+		if [ "$partition" != boot ]; then
+			echo "M7_PARTITION must be boot" >&2
+			exit 1
+		fi
+		;;
+	*)
+		echo "M7_BOOT_METHOD must be boot or flash" >&2
+		exit 1
+		;;
+esac
 
 for tool in fastboot python3 sha256sum lsusb timeout; do
 	command -v "$tool" >/dev/null || {
@@ -46,8 +66,20 @@ lsusb > "$run/lsusb-before.txt"
 sha256sum "$image" > "$run/image.sha256"
 
 set +e
-timeout 60 fastboot -s "$serial" boot "$image" > "$run/fastboot-boot.txt" 2>&1
-fastboot_rc=$?
+reboot_rc=
+if [ "$method" = boot ]; then
+	fastboot_log=fastboot-boot.txt
+	timeout 60 fastboot -s "$serial" boot "$image" > "$run/$fastboot_log" 2>&1
+	fastboot_rc=$?
+else
+	fastboot_log=fastboot-flash.txt
+	timeout 60 fastboot -s "$serial" flash "$partition" "$image" > "$run/$fastboot_log" 2>&1
+	fastboot_rc=$?
+	if [ "$fastboot_rc" -eq 0 ]; then
+		timeout 30 fastboot -s "$serial" reboot > "$run/fastboot-reboot.txt" 2>&1
+		reboot_rc=$?
+	fi
+fi
 set -e
 
 tty=
@@ -76,14 +108,17 @@ elapsed=$(( $(date +%s) - start_epoch ))
 lsusb > "$run/lsusb-after.txt"
 dump_fastboot > "$run/fastboot-after.txt" || true
 
-python3 - "$run" "$root" "$image" "$serial" "$started" "$ended" "$elapsed" \
-	"$fastboot_rc" "$tty" "$ready" <<'PY'
+python3 - "$run" "$root" "$image" "$started" "$ended" "$elapsed" \
+	"$fastboot_rc" "$tty" "$ready" "$method" "$partition" "$fastboot_log" "$reboot_rc" <<'PY'
 import json
 import pathlib
 import subprocess
 import sys
 
-run, root, image, serial, started, ended, elapsed, fastboot_rc, tty, ready = sys.argv[1:]
+(
+    run, root, image, started, ended, elapsed, fastboot_rc, tty, ready,
+    method, partition, fastboot_log, reboot_rc,
+) = sys.argv[1:]
 run = pathlib.Path(run)
 root = pathlib.Path(root)
 summary = json.loads((run / "serial-summary.json").read_text())
@@ -109,16 +144,19 @@ manifest = {
     "elapsed_seconds": int(elapsed),
     "source": {"repository": "JumpLink/linux-m7", "commit": commit, "dirty": dirty},
     "boot": {
-        "method": "fastboot boot",
+        "method": "fastboot flash" if method == "flash" else "fastboot boot",
+        "partition": partition or None,
         "image": pathlib.Path(image).name,
         "fastboot_returncode": int(fastboot_rc),
+        "reboot_returncode": int(reboot_rc) if reboot_rc else None,
         "serial_console": tty or None,
         "ready": ready == "true",
         "probe": summary["probe"],
     },
     "artifacts": {
         "serial_log": "serial.log" if tty else None,
-        "fastboot_log": "fastboot-boot.txt",
+        "fastboot_log": fastboot_log,
+        "fastboot_reboot_log": "fastboot-reboot.txt" if method == "flash" else None,
         "usb_before": "lsusb-before.txt",
         "usb_after": "lsusb-after.txt",
     },

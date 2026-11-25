@@ -53,12 +53,17 @@ The test unit is **S-ON and UNLOCKED** after the official HTCdev procedure.
 S-ON remains set by design and protects the radio and SIM lock. No S-OFF
 exploit or third-party unlock service is part of this project.
 
-`fastboot boot` is not a reliable first test on this HBOOT. A verified TWRP
-image returned `Booting OKAY` and then immediately reappeared in fastboot,
-without adb or a serial console. Recovery flashing currently fails during USB
-transfer with `No such file or directory` or `Protocol error`. Use a USB 2.0
-port or hub, reset HBOOT with the hardware keys, and validate the write path
-before testing the mainline image.
+`fastboot boot` is a dead end on this HBOOT. TWRP's official M7 instructions
+use `fastboot flash recovery`, and M7 reports document the same `fastboot boot`
+failure from HBOOT 1.55 onward. Here, a verified TWRP image returned `Booting
+OKAY` and then immediately reappeared in fastboot, without adb or a serial
+console.
+
+The separate USB problem is also documented. LineageOS warns that M7
+bootloaders can hang `getvar`, `boot` and `flash`, and recommends a USB Type-A
+2.0 port or hub. Recovery flashes here fail during transfer with `No such file
+or directory` or `Protocol error`. Reset HBOOT with the hardware keys, change
+the cable or port, and validate the write path before testing mainline.
 
 After the transport is stable, flash a known-good recovery first, then test
 the mainline image through the `boot` partition. The initramfs emits a
@@ -71,6 +76,13 @@ For a recorded one-shot run:
 FASTBOOT_SERIAL=... DURATION=30 ./tools/m7/bench.sh build/m7/boot.img
 ```
 
+If `fastboot boot` does not execute the image, the same tool can write and
+reboot the `boot` partition. It refuses every partition except `boot`:
+
+```sh
+FASTBOOT_SERIAL=... M7_BOOT_METHOD=flash ./tools/m7/bench.sh build/m7/boot.img
+```
+
 The run directory contains `run-manifest.json`, raw serial/fastboot/USB logs
 and the ready probe. The build directory also contains `build-manifest.json`.
 Both schemas are shared with the
@@ -78,8 +90,8 @@ Both schemas are shared with the
 so kernel results can move into the smartphone benchmark without scraping a
 terminal. Serial numbers, IMEIs and unlock tokens are excluded.
 
-Only after repeated successful `fastboot boot` tests should flashing `boot` be
-considered. Keep a known-good stock recovery path available.
+Keep TWRP as the recovery fallback. The mainline bench can flash only `boot`,
+and its initramfs never writes to eMMC.
 
 ## Source map
 
@@ -92,6 +104,12 @@ considered. Keep a known-good stock recovery path available.
 Hardware facts were cross-checked against the public HTC kernel sources in
 [`LineageOS/android_kernel_htc_msm8960`](https://github.com/LineageOS/android_kernel_htc_msm8960),
 branch `cm-14.1`, especially `arch/arm/mach-msm/htc/m7/`.
+
+## Bootloader references
+
+- [TWRP's official M7 fastboot install method](https://twrp.me/htc/htconem7gsm.html)
+- [LineageOS M7 install instructions and bootloader USB warning](https://wiki.lineageos.org/devices/m7/install/)
+- [M7 report that `fastboot boot` works only on HBOOT 1.44](https://xdaforums.com/t/solved-please-help-android-bricked-and-no-recovery-boot-either.2791811/)
 
 ## License and contributions
 

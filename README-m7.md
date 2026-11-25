@@ -81,11 +81,11 @@ considered. Keep a known-good stock recovery path available.
 
 ## Source map
 
-- `arch/arm/boot/dts/qcom/qcom-apq8064-htc-m7ul.dts` — board description
-- `arch/arm/configs/m7_defconfig` — first-boot kernel configuration
-- `tools/m7/build.sh` — reproducible kernel + initramfs + boot image build
-- `tools/m7/initramfs/init` — read-only maintenance init
-- `Documentation/devicetree/bindings/arm/qcom.yaml` — board compatible
+- `arch/arm/boot/dts/qcom/qcom-apq8064-htc-m7ul.dts`: board description
+- `arch/arm/configs/m7_defconfig`: first-boot kernel configuration
+- `tools/m7/build.sh`: reproducible kernel, initramfs and boot image build
+- `tools/m7/initramfs/init`: read-only maintenance init
+- `Documentation/devicetree/bindings/arm/qcom.yaml`: board compatible
 
 Hardware facts were cross-checked against the public HTC kernel sources in
 [`LineageOS/android_kernel_htc_msm8960`](https://github.com/LineageOS/android_kernel_htc_msm8960),

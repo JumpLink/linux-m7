@@ -1,4 +1,4 @@
-# AGENTS.md — linux-m7
+# AGENTS.md: linux-m7
 
 Mainline Linux bring-up for the HTC One M7 (`m7ul`). Read `README-m7.md` for the
 current hardware and build status.

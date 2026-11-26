@@ -235,6 +235,30 @@ The helper reaches the HBOOT menu, but the M7 USB port does not always
 re-enumerate fastboot without a power keypress. The product guard and lease
 remain mandatory for every write.
 
+### 2026-11-26: DMA, PIO and transfer-size variants
+
+Probes 75 to 79 tested the remaining host-controller and transfer-size
+hypotheses. None completed the download:
+
+- Data-first plus 32-byte FIFO bursts: immediate CRC failure `-84`.
+- PIO with 64-byte FIFO and 32-byte blocks: 27 bytes, then the FIFO stayed
+  full and `MMCIMASK1` was zero.
+- 16-word QCOM DMA bursts: the DMA setup fell back to PIO and transferred 0
+  bytes.
+- Capping `brcmf_sdiod_ramrw()` transfers at 256 bytes: 18 bytes, then the
+  same full-FIFO/zero-mask state.
+- `MCI_DPSM_QCOM_DATA_PEND` for SDIO writes: the kernel did not reach the USB
+  console at all; no ACM and no fastboot. This variant is reverted.
+
+The best observed run is still the normal QCOM DMA path with 32-byte blocks:
+259 bytes moved, then the TX FIFO stayed full, `MMCIMASK1` was zero and
+`MMCIDATACNT` still held the remaining byte count. The 259-byte boundary is
+`256 + 3`, but the 256-byte cap made the result worse, so it is not a simple
+CMD53-size limit.
+
+All temporary controller and brcmfmac changes are reverted. The tree is clean
+at `f7a70bc4b` plus this documentation update.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves

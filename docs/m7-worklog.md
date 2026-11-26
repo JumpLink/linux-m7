@@ -103,9 +103,10 @@ but has no software consumer in the published M7 sources.
 
 The current work adds:
 
-- SDCC3 with a 2.9 V fixed rail and `mmc-pwrseq-simple`
+- SDCC3 with PM8921 L6 card power, L7 IO power and `mmc-pwrseq-simple`
 - a 120 ms post-power delay and 1 ms power-off delay
 - SDC3 clock, command and data groups with 12 mA drive strength
+- the Downstream `WL_REG_ON` electrical configuration on PM8921 GPIO 16
 - BCM4335 SDIO function 1 and host-wake IRQ
 - optional `M7_FIRMWARE_DIR` packaging for `brcmfmac4335-sdio.bin` and NVRAM
 - WLAN, SDCC3, MMC-host and deferred-probe benchmark markers
@@ -120,10 +121,10 @@ change the failure and was reverted.
 
 ### 2026-11-26: Function 1 enable diagnosis
 
-The published bcmdhd path enables F1 through the host claim and a direct
-`SDIO_CCCR_IOEx` write. It does not mark F1 as already enabled. The local
-`sdio_enable_func()` bypass was therefore incorrect and has been removed in the
-current work tree.
+The published bcmdhd path enables F1 through the host claim and the standard
+`sdio_enable_func()` path. Its low-level SDMMC code special-cases F2 enable and
+disable, but it does not mark F1 as already enabled. The local
+`sdio_enable_func()` bypass was therefore incorrect and has been removed.
 
 A quoted `dyndbg=` parameter in the boot-image command line made HBOOT 1.61
 report `Active cmdline overflow! (1047 Bytes)`. That run never started Mainline
@@ -135,22 +136,53 @@ The valid follow-up runs measured:
 - standard `sdio_enable_func()`: `CCCR_IOEx` read returns `-110`
 - tagged MMC instrumentation: the controller reports command timeout on that
   read, not CRC or response-decoding failure
-- direct `CCCR_IOEx` write, matching bcmdhd: the write also returns `-110`
+- direct `CCCR_IOEx` write: the write also returns `-110`
 
-F1 remains inactive. The current direct-write branch and tagged logs are
-experiments, not a completed fix. USB, eMMC and touchscreen remain functional.
+At this point F1 was still inactive. USB, eMMC and touchscreen remained
+functional.
 
 The SSBI PMIC GPIO binding uses one-based GPIO cells. The Mainline driver
 subtracts `PM8XXX_GPIO_PHYSICAL_OFFSET` from GPIO and IRQ offsets, so the M7
 values 16 for `WL_REG_ON` and 38 for host wake are correct. A temporary test
 with GPIO cell 15 prevented SDIO initialization and was reverted.
 
+### 2026-11-26: Function 1 online
+
+The Downstream board code supplied the missing electrical details:
+
+- SDCC3 uses PM8921 L6 at 2.95 V for card power and L7 at 1.8 V for IO.
+- `WL_REG_ON` is a CMOS output on S4 with no pull-up.
+- SDC3 uses 12 mA drive strength and pull-ups on command and data.
+- The old MSM controller enables `FLOWENA` but not `SELECT_IN_FBCLK`.
+
+Several plausible changes were measured and rejected. Four-bit mode failed
+before brcmfmac started. A 1 ms reset-assert delay, three 1 ms write retries,
+SD high-speed, 10 MHz with feedback-clock selection, GPIO 43 `func2` and an
+explicit push-pull setting did not fix F1. The push-pull property also
+overlapped the drive-strength encoding and was reverted.
+
+Removing `SELECT_IN_FBCLK` changed the 25 MHz failure from command timeout to
+an invalid `0xffffffff` R5 response. At 10 MHz the response was still invalid.
+At 400 kHz the same controller path returned a valid response. The standard
+MMC enable sequence then wrote `IOEx`, read `IORx = 0x02` and brcmfmac selected
+`brcm/brcmfmac4335-sdio` for BCM4335/1.
+
+Commit `604513c5e` contains the clean result: 1 bit, 400 kHz, no QCOM
+feedback-clock selection, L6/L7 regulators, the Downstream `WL_REG_ON` pin
+configuration and the standard `sdio_enable_func()` path. The temporary
+direct-write, CRC and logging experiments are removed. A clean rerun reached
+firmware selection again.
+
+The next blocker is downstream of F1: no M7 NVRAM is packaged and
+`brcmf_sdio_htclk` reports `HT Avail timeout (1000000): clkctl 0x50`.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
 Pstore across failed boots, returns automatically to TWRP and runs the
-Synaptics touchscreen. WLAN has a recognized SDIO bus, but Function 1 is not
-active and `wlan0` is not operational.
+Synaptics touchscreen. WLAN enumerates the BCM4335, enables Function 1 and
+reaches firmware selection. `wlan0` is not operational yet because the HT
+clock does not become available and no usable NVRAM is packaged.
 
 ## Validation
 
@@ -162,12 +194,13 @@ active and `wlan0` is not operational.
 
 ## Next steps
 
-1. Resolve the BCM4335 Function 1 enable timeout at `CCCR_IOEx`.
+1. Resolve the BCM4335 `HT Avail timeout` at `clkctl 0x50`.
 2. Provide a usable NVRAM. No freely licensed M7-specific file is public; any
    device-local calibration must stay outside git.
-3. Re-enable 4-bit and high-speed SDIO only after 1-bit operation is stable.
-4. Add network userspace tools, then verify an actual association.
-5. Continue with display, audio, Bluetooth and modem as separate milestones.
+3. Raise the SDIO clock in steps after the 400 kHz firmware path is stable.
+4. Re-enable 4-bit and high-speed SDIO only after 1-bit operation is stable.
+5. Add network userspace tools, then verify an actual association.
+6. Continue with display, audio, Bluetooth and modem as separate milestones.
 
 See also:
 

@@ -31,10 +31,33 @@ Open risks:
   `brcm,bcm4335-fmac`; confirm that all affected modules share this behavior.
 - Prove that standard SDIO and eMMC behavior is unchanged.
 - Add a focused test or at least a documented multi-board regression matrix.
-- F1 enable still times out on both `CCCR_IOEx` read and direct write. Resolve
-  that before proposing any change to `sdio_enable_func()`.
+- Keep the standard `sdio_enable_func()` path. The M7 now enables F1 at
+  400 kHz; bypassing enable or replacing it with a direct write is not needed.
 
-## 2. APQ8064 pinctrl registration order
+## 2. QCOM MMCI feedback-clock selection
+
+File:
+
+- `drivers/mmc/host/mmci.c`
+
+Candidate: make `MCI_QCOM_CLK_SELECT_IN_FBCLK` optional per controller or
+board instead of enabling it for every QCOM variant.
+
+Evidence: the old MSM SDCC driver enables only `MCI_QCOM_CLK_FLOWENA`. On the
+M7, feedback-clock selection produces CMD52 timeouts at 10 and 25 MHz and an
+invalid R5 response without it. At 400 kHz without feedback-clock selection,
+the standard F1 enable sequence succeeds and brcmfmac reaches firmware
+selection. eMMC still works in the same image.
+
+Open risks:
+
+- The current checkpoint changes the global QCOM variant. Scope the final
+  change to SDCC3 or add a DT property before upstream submission.
+- Test other QCOM SDCC/MMC boards and eMMC at all supported speeds.
+- Determine whether 400 kHz is an M7 module requirement or a symptom of the
+  incomplete clock/power setup.
+
+## 3. APQ8064 pinctrl registration order
 
 Files:
 
@@ -50,7 +73,7 @@ registration. The old order caused repeated `EPROBE_DEFER` and blocked
 Open risk: review other MSM pinctrl users for assumptions about GPIO-base
 allocation and hog handling.
 
-## 3. APQ8064 GPIO function flag
+## 4. APQ8064 GPIO function flag
 
 Files:
 
@@ -66,7 +89,7 @@ the GPIO flag.
 Open risk: check whether any Downstream-only APQ8064 pin table relies on the
 old declaration.
 
-## 4. MSM IOMMU master lookup
+## 5. MSM IOMMU master lookup
 
 File:
 
@@ -81,7 +104,7 @@ early `qcom_iommu_of_xlate()` oops.
 Open risk: test a platform with multiple IOMMU clients and multiple IOMMUs,
 not only the M7.
 
-## 5. Chipidea MSM USB peripheral setup
+## 6. Chipidea MSM USB peripheral setup
 
 Files:
 
@@ -96,7 +119,7 @@ The corrected path enumerates the CDC ACM console reliably.
 
 Open risk: test OTG and host use cases before generalizing the glue behavior.
 
-## 6. HTC One M7 board support
+## 7. HTC One M7 board support
 
 Files:
 
@@ -107,11 +130,12 @@ Files:
 Candidate: submit the board in stages as subsystems become stable.
 
 Current evidence: eMMC, USB ACM, Pstore, automatic Recovery and Synaptics
-S3202 touchscreen work. BCM4335 SDIO is recognized but not operational.
+S3202 touchscreen work. BCM4335 SDIO enumerates, enables Function 1 and reaches
+firmware selection, but `wlan0` is not operational.
 
 Open risks:
 
-- WLAN Function 1 access and NVRAM remain unresolved.
+- WLAN HT clock and NVRAM remain unresolved.
 - Display, audio, Bluetooth, modem and cameras are not enabled.
 - The defconfig is intentionally headless and not a daily-driver
   configuration.

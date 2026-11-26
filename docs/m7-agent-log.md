@@ -19,7 +19,7 @@ not duplicated in this public repository; the workspace maps roles to models in
 | 2026-11-26 | `free-coder` | KOSTENLOS / public | Trace Downstream F1 activation and ChipClkCSR setup | Completed; no separate host mode identified, exact claim path under follow-up |
 | 2026-11-26 | `free-coder` | KOSTENLOS / public | Resolve PM8921 GPIO 43 function | Completed; 32 kHz output is plausible, `func2` remains unconfirmed |
 | 2026-11-26 | `free-coder` | KOSTENLOS / public | Resolve the exact Downstream F1 claim path | Completed; Downstream uses host claim plus `sdio_enable_func()` and CCCR IOEx/IORx, with no already-enabled skip |
-| 2026-11-26 | `free-coder` | KOSTENLOS / public | Resolve Downstream SDCC3 width, clock and power setup | Running |
+| 2026-11-26 | `free-coder` | KOSTENLOS / public | Resolve Downstream SDCC3 width, clock and power setup | Completed; identified 4-bit platform data, L6/L7 regulators, `WL_REG_ON` configuration and the MSM clock sequence; main session verified the code and tested each relevant difference |
 | 2026-11-26 | `go-flash` | GO / private docs | Update the hub workbench document | Rejected because the OpenCode Go monthly limit was reached; main session made the edit |
 | 2026-11-26 | `free-scout` | KOSTENLOS / public | Reconstruct the port history from public commits | Completed; chronology cross-checked against the main session record |
 

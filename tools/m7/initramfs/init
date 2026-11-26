@@ -63,6 +63,15 @@ fi
 	else
 		echo "M7_EMMC_PRESENT=no"
 	fi
+	if ls /sys/bus/i2c/devices/*-0020 >/dev/null 2>&1; then
+		echo "M7_TOUCH_PRESENT=yes"
+	else
+		echo "M7_TOUCH_PRESENT=no"
+	fi
+	touch_driver=$(cat /sys/bus/i2c/devices/*-0020/uevent 2>/dev/null | grep '^DRIVER=' | cut -d= -f2)
+	echo "M7_TOUCH_DRIVER=$touch_driver"
+	echo "M7_INPUT_DEVICES=$(ls /sys/class/input 2>/dev/null | tr '\n' ' ')"
+	echo "M7_INPUT_NAMES=$(grep '^N: Name=' /proc/bus/input/devices 2>/dev/null | tr '\n' ' ')"
 	echo "M7_READY_END"
 	echo
 	dmesg

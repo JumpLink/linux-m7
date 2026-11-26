@@ -45,6 +45,13 @@ def main():
         b"echo M7_UDC=$(ls /sys/class/udc | head -n1);"
         b"echo M7_UDC_STATE=$(cat /sys/class/udc/*/state 2>/dev/null);"
         b"grep -q mmcblk0 /proc/partitions && echo M7_EMMC_PRESENT=yes || echo M7_EMMC_PRESENT=no;"
+        b"ls /sys/bus/i2c/devices/*-0020 >/dev/null 2>&1 &&"
+        b" echo M7_TOUCH_PRESENT=yes || echo M7_TOUCH_PRESENT=no;"
+        b"echo M7_TOUCH_DRIVER=$(cat /sys/bus/i2c/devices/*-0020/uevent"
+        b" 2>/dev/null | grep '^DRIVER=' | cut -d= -f2);"
+        b"echo M7_INPUT_DEVICES=$(ls /sys/class/input 2>/dev/null | tr '\\n' ' ');"
+        b"echo M7_INPUT_NAMES=$(grep '^N: Name=' /proc/bus/input/devices"
+        b" 2>/dev/null | tr '\\n' ' ');"
         b"echo M7_HOST_PROBE_END\\n"
     )
 

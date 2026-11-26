@@ -259,14 +259,37 @@ CMD53-size limit.
 All temporary controller and brcmfmac changes are reverted. The tree is clean
 at `f7a70bc4b` plus this documentation update.
 
+### 2026-11-26: the download completes; the reset is after the reset vector
+
+A temporary `brcmf_err()` trace in `brcmf_sdiod_ramrw()` showed that the
+firmware transfer was never stuck at 259 bytes. The earlier monitor sampled at
+3.6 s and the USB gadget re-enumerated at 25.8 s, which made a slow transfer
+look like a stall. With a sample at 20 s the trace showed:
+
+- 17 transfers of 32768 bytes from `0x00180000` through `0x001f8000`
+- a final 12235-byte transfer at `0x00200000`
+- the 1832-byte NVRAM transfer at `0x0023f8d8`
+- the 4-byte reset vector write at address 0
+- about 1.07 s per 32 KiB chunk at 400 kHz
+
+The download therefore completes in about 19.7 s. The failure moved to the
+post-reset path: `brcmf_chip_cm3_set_active()` releases the CM3 core, then the
+USB ACM connection disappears at about 25.8 s and `wlan0` never appears. The
+20 s register dump still shows `brcmf_wdog` in `brcmf_sdio_watchdog_thread`,
+`MMCIDATACNT` at zero and no new pstore panic in the live dump.
+
+The trace patch is kept outside the tree at
+`/tmp/opencode/m7-ramrw-trace.patch`; the committed tree stays clean. The next
+step is a post-reset pstore capture and a check of the CM3 reset/clock path,
+not another controller-size experiment.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
 Pstore across failed boots, returns automatically to TWRP and runs the
 Synaptics touchscreen. WLAN enumerates the BCM4335, enables Function 1 and
-starts the firmware download when an NVRAM file is supplied. Low-speed byte
-mode sustains the transfer, but the device resets before completion and
-`wlan0` is not operational yet.
+completes the firmware and NVRAM download. The CM3 core is then released, but
+the device drops the USB connection before `wlan0` becomes operational.
 
 ## Validation
 

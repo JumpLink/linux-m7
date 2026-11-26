@@ -158,14 +158,14 @@ Files:
 Candidate: submit the board in stages as subsystems become stable.
 
 Current evidence: eMMC, USB ACM, Pstore, automatic Recovery and Synaptics
-S3202 touchscreen work. BCM4335 SDIO enumerates, enables Function 1 and starts
-a sustained firmware download when an NVRAM file is supplied. `wlan0` is not
-operational.
+S3202 touchscreen work. BCM4335 SDIO enumerates, enables Function 1 and
+completes the firmware and NVRAM download in about 19.7 s. The CM3 core is
+released, then the USB connection drops before `wlan0` becomes operational.
 
 Open risks:
 
-- The firmware download still ends in a silent reset, and an M7 NVRAM remains
-  unresolved.
+- The post-reset CM3 path ends in a silent USB disconnect, and an M7 NVRAM
+  remains unresolved.
 - Display, audio, Bluetooth, modem and cameras are not enabled.
 - The defconfig is intentionally headless and not a daily-driver
   configuration.

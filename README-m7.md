@@ -8,10 +8,11 @@ mainline tree maintained at
 ## Status
 
 **2026-11-26: HTCdev unlock, TWRP recovery and adb are verified. Mainline now
-boots to the USB CDC ACM shell. The bench records `ready=true`, UDC state
-`configured`, the M7 device-tree model and eMMC presence. The port fixes the MSM
-IOMMU lookup, pinctrl registration order, APQ8064 GPIO function flag and the
-Qcom USB clock/role setup.**
+boots to the USB CDC ACM shell with a working Synaptics S3202 touchscreen. The
+bench records `ready=true`, UDC state `configured`, the M7 device-tree model,
+eMMC presence and the bound RMI4 driver. The port fixes the MSM IOMMU lookup,
+pinctrl registration order, APQ8064 GPIO function flag and the Qcom USB
+clock/role setup.**
 
 The imported basis is Linux 7.1.0 at upstream commit
 `15fbd13fe2475cf77fca0006b618bb5c929025bd`. The first device tree enables:
@@ -20,10 +21,12 @@ The imported basis is Linux 7.1.0 at upstream commit
 - PM8921 + PM8821 and the M7 regulator voltages
 - eMMC on SDCC1
 - USB peripheral on HSUSB1, with a built-in `g_serial` console for early logs
+- Synaptics S3202 touchscreen on GSBI3 I2C, IRQ GPIO 34, reset GPIO 85 and
+  PM8921 LDO 15
 - volume keys, reboot-mode handling and a 1 MiB Pstore/Ramoops region
 
-Display, touchscreen, audio, wireless, modem and cameras are not enabled yet.
-The camera has no mainline APQ8064 driver and is a separate long-term project.
+Display, audio, wireless, modem and cameras are not enabled yet. The camera has
+no mainline APQ8064 driver and is a separate long-term project.
 
 ## Build
 
@@ -74,7 +77,16 @@ and then immediately reappeared in fastboot, without adb.
 LineageOS also warns about buggy M7 bootloader USB. Replacing the cable fixed
 the transfer errors. TWRP now flashes to `recovery`, boots and exposes adb.
 The mainline image flashes to `boot`, HBOOT reports `TAG:Ramdisk OK` and the
-kernel reaches the USB ACM shell.
+kernel reaches the USB ACM shell. A known-good image also fails through
+`fastboot boot`, so `bench.sh` defaults to that path only for compatible
+bootloaders. Use `M7_BOOT_METHOD=flash` on this HBOOT.
+
+The touch controller needs GPIO 85 driven high before RMI4 probes. A pull-up
+alone left it in reset and caused a level-low interrupt storm with
+`Failed to read irqs, code=-6`. The reset pin now uses `output-high`, and GPIO 34
+uses a falling-edge interrupt. The kernel then reports
+`found RMI device, manufacturer: Synaptics, product: s3202` and creates the
+touch input device without IRQ errors.
 
 Pstore/Ramoops at `0x86000000` remains the diagnostic path for failed builds.
 Boot TWRP after a failed attempt and read that RAM region before a power-off.

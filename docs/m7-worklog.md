@@ -117,7 +117,8 @@ FBR block-size writes and CCCR function enable for that quirk.
 
 Current result: SDCC3 initializes, the kernel reports a new SDIO card and
 brcmfmac reaches the Function 1 ChipClkCSR access. That access still times out,
-so `wlan0` does not exist yet. This is a bootable checkpoint: USB, eMMC and
+so `wlan0` does not exist yet. A PM8921 GPIO 43 `func2` experiment did not change
+the failure and was reverted. This is a bootable checkpoint: USB, eMMC and
 touchscreen remain functional.
 
 ## Current result

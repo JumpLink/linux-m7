@@ -16,14 +16,14 @@ Candidate series:
 
 1. Add a compatible-based BCM4335 `MMC_QUIRK_NONSTD_SDIO` fixup after the
    common CIS has been read.
-2. Skip FBR block-size writes for cards explicitly marked
-   `MMC_QUIRK_NONSTD_SDIO`.
+2. Skip per-function FBR/CIS probing for that quirk, but keep standard FBR
+   block-size writes and `sdio_enable_func()`.
 
 Evidence: the M7 BCM4335 responds to common CIS reads but not standard FBR
-access. Skipping FBR/CIS probing and block-size writes lets brcmfmac reach its
-Function 1 setup. A separate experiment showed that bypassing F1 enable only
-moves the failure to ChipClkCSR. Published bcmdhd code does enable F1, so the
-bypass is not an upstream candidate.
+reads at 25 MHz. At 400 kHz the FBR block-size writes succeed and are required
+for the firmware data path. Bypassing F1 enable only moves the failure to
+ChipClkCSR. Published bcmdhd code does enable F1, so neither bypass is an
+upstream candidate.
 
 Open risks:
 
@@ -57,7 +57,27 @@ Open risks:
 - Determine whether 400 kHz is an M7 module requirement or a symptom of the
   incomplete clock/power setup.
 
-## 3. APQ8064 pinctrl registration order
+## 3. SDIO low-speed byte mode
+
+File:
+
+- `drivers/mmc/core/sdio_io.c`
+
+Candidate: use byte mode for SDIO extended transfers when the host clock is at
+most 1 MHz.
+
+Evidence: at 400 kHz a 32 KiB block exceeded the one-second SDIO timeout. Byte
+mode sustains a sequence of 512-byte firmware writes and avoids the 32 KiB
+backplane-window boundary. The device still resets before the download
+completes.
+
+Open risks:
+
+- Confirm that the reset is unrelated to byte mode.
+- Measure the throughput cost and test other low-speed SDIO devices.
+- Decide whether the threshold belongs in the MMC core or in brcmfmac.
+
+## 4. APQ8064 pinctrl registration order
 
 Files:
 
@@ -73,7 +93,7 @@ registration. The old order caused repeated `EPROBE_DEFER` and blocked
 Open risk: review other MSM pinctrl users for assumptions about GPIO-base
 allocation and hog handling.
 
-## 4. APQ8064 GPIO function flag
+## 5. APQ8064 GPIO function flag
 
 Files:
 
@@ -89,7 +109,7 @@ the GPIO flag.
 Open risk: check whether any Downstream-only APQ8064 pin table relies on the
 old declaration.
 
-## 5. MSM IOMMU master lookup
+## 6. MSM IOMMU master lookup
 
 File:
 
@@ -104,7 +124,7 @@ early `qcom_iommu_of_xlate()` oops.
 Open risk: test a platform with multiple IOMMU clients and multiple IOMMUs,
 not only the M7.
 
-## 6. Chipidea MSM USB peripheral setup
+## 7. Chipidea MSM USB peripheral setup
 
 Files:
 
@@ -119,7 +139,7 @@ The corrected path enumerates the CDC ACM console reliably.
 
 Open risk: test OTG and host use cases before generalizing the glue behavior.
 
-## 7. HTC One M7 board support
+## 8. HTC One M7 board support
 
 Files:
 
@@ -130,12 +150,14 @@ Files:
 Candidate: submit the board in stages as subsystems become stable.
 
 Current evidence: eMMC, USB ACM, Pstore, automatic Recovery and Synaptics
-S3202 touchscreen work. BCM4335 SDIO enumerates, enables Function 1 and reaches
-firmware selection, but `wlan0` is not operational.
+S3202 touchscreen work. BCM4335 SDIO enumerates, enables Function 1 and starts
+a sustained firmware download when an NVRAM file is supplied. `wlan0` is not
+operational.
 
 Open risks:
 
-- WLAN HT clock and NVRAM remain unresolved.
+- The firmware download still ends in a silent reset, and an M7 NVRAM remains
+  unresolved.
 - Display, audio, Bluetooth, modem and cameras are not enabled.
 - The defconfig is intentionally headless and not a daily-driver
   configuration.

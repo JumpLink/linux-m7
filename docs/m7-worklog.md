@@ -173,16 +173,41 @@ configuration and the standard `sdio_enable_func()` path. The temporary
 direct-write, CRC and logging experiments are removed. A clean rerun reached
 firmware selection again.
 
-The next blocker is downstream of F1: no M7 NVRAM is packaged and
-`brcmf_sdio_htclk` reports `HT Avail timeout (1000000): clkctl 0x50`.
+The earlier `HT Avail timeout` was a cleanup path: without an NVRAM file the
+firmware request failed before the code download started.
+
+### 2026-11-26: firmware download checkpoint
+
+A generic LibreELEC BCM4335 NVRAM was downloaded only to
+`/tmp/opencode/m7-wlan-firmware/` for testing. It is not M7 calibration and is
+not committed. With that file present, brcmfmac started downloading
+`brcmfmac4335-sdio.bin`.
+
+At 400 kHz the first 32 KiB CMD53 block exceeded the one-second SDIO data
+timeout. Restoring the standard FBR block-size writes fixed the immediate
+failure. Smaller 4 KiB transfers then succeeded, but a block ending exactly at
+the 32 KiB backplane-window boundary stalled. A 63-block split passed that
+boundary. PIO was worse, and 4-bit mode did not complete the download either.
+
+Commit `901cb4ac7` keeps the standard FBR writes and uses byte mode for SDIO
+extended transfers whenever the host clock is at most 1 MHz. This avoids both
+the oversized block timeout and the window-boundary block. The firmware
+download then progresses through many successful 512-byte commands. The device
+still resets silently before completion. Ramoops contains no new panic, only an
+older IOMMU crash.
+
+A QCOM-specific dummy CMD52 after each CMD53 write was also tested. It matched
+the old MSM driver and returned success, but did not prevent the reset, so it
+was removed.
 
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
 Pstore across failed boots, returns automatically to TWRP and runs the
 Synaptics touchscreen. WLAN enumerates the BCM4335, enables Function 1 and
-reaches firmware selection. `wlan0` is not operational yet because the HT
-clock does not become available and no usable NVRAM is packaged.
+starts the firmware download when an NVRAM file is supplied. Low-speed byte
+mode sustains the transfer, but the device resets before completion and
+`wlan0` is not operational yet.
 
 ## Validation
 
@@ -194,9 +219,10 @@ clock does not become available and no usable NVRAM is packaged.
 
 ## Next steps
 
-1. Resolve the BCM4335 `HT Avail timeout` at `clkctl 0x50`.
-2. Provide a usable NVRAM. No freely licensed M7-specific file is public; any
-   device-local calibration must stay outside git.
+1. Identify the silent reset during the firmware download and complete one
+   transfer without a watchdog or power reset.
+2. Provide a usable M7 NVRAM. No freely licensed M7-specific file is public;
+   any device-local calibration must stay outside git.
 3. Raise the SDIO clock in steps after the 400 kHz firmware path is stable.
 4. Re-enable 4-bit and high-speed SDIO only after 1-bit operation is stable.
 5. Add network userspace tools, then verify an actual association.

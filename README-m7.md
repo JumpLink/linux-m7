@@ -25,10 +25,11 @@ The imported basis is Linux 7.1.0 at upstream commit
   PM8921 LDO 15
 - volume keys, reboot-mode handling and a 1 MiB Pstore/Ramoops region
 
-WLAN has a bootable checkpoint: SDCC3 recognizes the BCM4335, enables Function
-1 and reaches firmware selection at 400 kHz. `wlan0` is not created yet because
-the HT clock does not become available and no usable NVRAM is packaged.
-Display, audio, Bluetooth, modem and cameras remain separate milestones.
+WLAN has a bootable checkpoint: SDCC3 recognizes the BCM4335 and enables
+Function 1 at 400 kHz. With an NVRAM file supplied, brcmfmac starts the firmware
+download. Low-speed byte mode sustains the transfer, but the device resets
+before completion and `wlan0` is not created yet. Display, audio, Bluetooth,
+modem and cameras remain separate milestones.
 The camera has no mainline APQ8064 driver and is a separate long-term project.
 
 The full history, current result and upstream candidates are recorded in

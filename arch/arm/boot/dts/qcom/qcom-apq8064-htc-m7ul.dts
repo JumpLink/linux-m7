@@ -36,6 +36,21 @@
 		reg = <0x90000000 0x70000000>;
 	};
 
+	wlan_pwrseq: pwrseq-wlan {
+		compatible = "mmc-pwrseq-simple";
+		reset-gpios = <&pm8921_gpio 16 GPIO_ACTIVE_LOW>;
+		post-power-on-delay-ms = <120>;
+		power-off-delay-us = <1000>;
+	};
+
+	wlan_reg_on: regulator-wlan-reg-on {
+		compatible = "regulator-fixed";
+		regulator-name = "wlan-reg-on";
+		regulator-min-microvolt = <2900000>;
+		regulator-max-microvolt = <2900000>;
+		regulator-always-on;
+	};
+
 	reserved-memory {
 		#address-cells = <1>;
 		#size-cells = <1>;
@@ -153,6 +168,26 @@
 			function = "gpio";
 			drive-strength = <2>;
 			output-high;
+		};
+	};
+
+	wlan_sdcc3_pins: wlan-sdcc3-pins {
+		clk-pins {
+			groups = "sdc3_clk";
+			drive-strength = <12>;
+			bias-disable;
+		};
+
+		cmd-pins {
+			groups = "sdc3_cmd";
+			drive-strength = <12>;
+			bias-pull-up;
+		};
+
+		data-pins {
+			groups = "sdc3_data";
+			drive-strength = <12>;
+			bias-pull-up;
 		};
 	};
 };
@@ -287,6 +322,29 @@
 	vmmc-supply = <&pm8921_l5>;
 	vqmmc-supply = <&pm8921_s4>;
 	status = "okay";
+};
+
+&sdcc3 {
+	/delete-property/ cap-sd-highspeed;
+
+	#address-cells = <1>;
+	#size-cells = <0>;
+	vmmc-supply = <&wlan_reg_on>;
+	vqmmc-supply = <&wlan_reg_on>;
+	mmc-pwrseq = <&wlan_pwrseq>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&wlan_sdcc3_pins>;
+	bus-width = <1>;
+	max-frequency = <25000000>;
+	non-removable;
+	status = "okay";
+
+	wifi@1 {
+		compatible = "brcm,bcm4335-fmac", "brcm,bcm4329-fmac";
+		reg = <1>;
+		interrupts-extended = <&pm8921_gpio 38 IRQ_TYPE_EDGE_FALLING>;
+		interrupt-names = "host-wake";
+	};
 };
 
 &usb_hs1_phy {

@@ -208,6 +208,13 @@ static const struct mmc_fixup __maybe_unused sdio_fixup_methods[] = {
 	SDIO_FIXUP(SDIO_VENDOR_ID_MARVELL, SDIO_DEVICE_ID_MARVELL_8887_F0,
 		   add_limit_rate_quirk, 150000000),
 
+	/*
+	 * BCM4335 modules expose the common CIS but not the standard function
+	 * base registers. Keep the common CIS IDs and skip per-function probing.
+	 */
+	SDIO_FIXUP_COMPATIBLE("brcm,bcm4335-fmac", add_quirk,
+			     MMC_QUIRK_NONSTD_SDIO),
+
 	END_FIXUP
 };
 

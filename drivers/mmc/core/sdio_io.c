@@ -65,6 +65,10 @@ int sdio_enable_func(struct sdio_func *func)
 	if (!func)
 		return -EINVAL;
 
+	/* The host initializes functions on cards without standard CCCRs. */
+	if (func->card->quirks & MMC_QUIRK_NONSTD_SDIO)
+		return 0;
+
 	pr_debug("SDIO: Enabling device %s...\n", sdio_func_id(func));
 
 	ret = mmc_io_rw_direct(func->card, 0, 0, SDIO_CCCR_IOEx, 0, &reg);
@@ -165,6 +169,12 @@ int sdio_set_block_size(struct sdio_func *func, unsigned blksz)
 
 	if (blksz == 0)
 		blksz = min3(func->max_blksize, func->card->host->max_blk_size, 512u);
+
+	/* Non-standard cards may not implement the FBR block-size registers. */
+	if (func->card->quirks & MMC_QUIRK_NONSTD_SDIO) {
+		func->cur_blksize = blksz;
+		return 0;
+	}
 
 	ret = mmc_io_rw_direct(func->card, 1, 0,
 		SDIO_FBR_BASE(func->num) + SDIO_FBR_BLKSIZE,

@@ -5,12 +5,14 @@ set -euo pipefail
 # Usage: BUSYBOX=/path/to/static-arm-busybox ./tools/m7/build.sh [build-dir]
 # SKIP_KERNEL_BUILD=1 packages existing kernel artifacts; SKIP_READER_BUILD=1
 # reuses a prebuilt readmem when the ARM compiler is unavailable on the host.
+# M7_FIRMWARE_DIR optionally supplies an unpacked brcmfmac4335-sdio.bin and NVRAM.
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
 build=${1:-"$root/build/m7"}
 busybox=${BUSYBOX:?Set BUSYBOX to a statically linked ARMv7 BusyBox binary}
 cross=${CROSS_COMPILE:-arm-linux-gnu-}
 jobs=${JOBS:-$(nproc)}
+firmware=${M7_FIRMWARE_DIR:-}
 
 tools=(cpio gzip mkbootimg python3 readelf)
 if [ "${SKIP_READER_BUILD:-0}" != 1 ]; then
@@ -104,6 +106,18 @@ if [ "${M7_DIAGNOSTIC_REBOOT:-0}" = 1 ]; then
 fi
 printf 'root:x:0:0:root:/root:/bin/sh\n' > "$initramfs/etc/passwd"
 printf 'root:x:0:\n' > "$initramfs/etc/group"
+
+if [ -n "$firmware" ]; then
+	fw="$firmware/brcmfmac4335-sdio.bin"
+	[ -f "$fw" ] || { echo "missing firmware: $fw" >&2; exit 1; }
+	mkdir -p "$initramfs/lib/firmware/brcm"
+	install -m 0644 "$fw" "$initramfs/lib/firmware/brcm/brcmfmac4335-sdio.bin"
+	for name in brcmfmac4335-sdio.htc,m7ul.txt brcmfmac4335-sdio.txt; do
+		if [ -f "$firmware/$name" ]; then
+			install -m 0644 "$firmware/$name" "$initramfs/lib/firmware/brcm/$name"
+		fi
+	done
+fi
 
 (
 	cd "$initramfs"

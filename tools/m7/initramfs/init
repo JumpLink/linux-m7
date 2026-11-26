@@ -46,6 +46,9 @@ done
 
 if [ ! -e /dev/ttyGS0 ] && [ -e /m7-diag-reboot ]; then
 	echo "m7-init: no USB console; diagnostic reboot" > /dev/console
+	if [ -x /bin/reboot-bootloader ]; then
+		/bin/reboot-bootloader
+	fi
 	reboot -f
 fi
 

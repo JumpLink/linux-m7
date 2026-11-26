@@ -4,7 +4,7 @@ set -euo pipefail
 # Build a first-boot mainline image for the HTC One M7 (m7ul).
 # Usage: BUSYBOX=/path/to/static-arm-busybox ./tools/m7/build.sh [build-dir]
 # SKIP_KERNEL_BUILD=1 packages existing kernel artifacts; SKIP_READER_BUILD=1
-# reuses a prebuilt readmem when the ARM compiler is unavailable on the host.
+# reuses prebuilt ARM helpers when the cross compiler is unavailable on the host.
 # M7_FIRMWARE_DIR optionally supplies an unpacked brcmfmac4335-sdio.bin and NVRAM.
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
@@ -48,9 +48,18 @@ if [ "${SKIP_READER_BUILD:-0}" != 1 ]; then
 	"$cross"gcc -marm -nostdlib -static -O2 -Wall -Wextra \
 		-fno-builtin -fno-stack-protector -Wl,-e,_start \
 		-o "$build/readmem" "$root/tools/m7/readmem.c"
-elif [ ! -x "$build/readmem" ]; then
-	echo "missing prebuilt ARM reader: $build/readmem" >&2
-	exit 1
+	"$cross"gcc -marm -nostdlib -static -O2 -Wall -Wextra \
+		-fno-builtin -fno-stack-protector -Wl,-e,_start \
+		-o "$build/reboot-bootloader" "$root/tools/m7/reboot_bootloader.c"
+else
+	[ -x "$build/readmem" ] || {
+		echo "missing prebuilt ARM reader: $build/readmem" >&2
+		exit 1
+	}
+	[ -x "$build/reboot-bootloader" ] || {
+		echo "missing prebuilt ARM reboot helper: $build/reboot-bootloader" >&2
+		exit 1
+	}
 fi
 if [ "${SKIP_KERNEL_BUILD:-0}" != 1 ]; then
 	make -C "$root" O="$build" ARCH=arm CROSS_COMPILE="$cross" m7_defconfig
@@ -101,6 +110,7 @@ for applet in sh mount mkdir ls head sleep ln echo cat uname dmesg hostname powe
 	ln -s busybox "$initramfs/bin/$applet"
 done
 install -m 0755 "$root/tools/m7/initramfs/init" "$initramfs/init"
+install -m 0755 "$build/reboot-bootloader" "$initramfs/bin/reboot-bootloader"
 if [ "${M7_DIAGNOSTIC_REBOOT:-0}" = 1 ]; then
 	: > "$initramfs/m7-diag-reboot"
 fi
@@ -138,7 +148,7 @@ mkbootimg \
 	--cmdline "$cmdline" \
 	--output "$build/boot.img"
 
-sha256sum "$build/boot.img" "$build/zImage-dtb" "$dtb" "$build/initramfs.cpio.gz" "$build/readmem" "$build/.config" > "$build/SHA256SUMS"
+sha256sum "$build/boot.img" "$build/zImage-dtb" "$dtb" "$build/initramfs.cpio.gz" "$build/readmem" "$build/reboot-bootloader" "$build/.config" > "$build/SHA256SUMS"
 
 python3 - "$build" "$root" "$cmdline" "$dtb_name" "$ramdisk_offset" \
 	"${M7_EARLY_REBOOT_MODE:-0}" "${M7_DIAGNOSTIC_REBOOT:-0}" <<'PY'
@@ -195,6 +205,7 @@ manifest = {
         "dtb_sha256": digest(build / "arch/arm/boot/dts/qcom" / (dtb_name + ".dtb")),
         "initramfs_sha256": digest(build / "initramfs.cpio.gz"),
         "readmem_sha256": digest(build / "readmem"),
+        "reboot_bootloader_sha256": digest(build / "reboot-bootloader"),
         "base": "0x80600000",
         "kernel_offset": "0x00008000",
         "ramdisk_offset": ramdisk_offset,
@@ -208,4 +219,4 @@ manifest = {
 (build / "build-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 PY
 
-ls -lh "$build/boot.img" "$build/zImage-dtb" "$dtb" "$build/initramfs.cpio.gz" "$build/readmem" "$build/build-manifest.json"
+ls -lh "$build/boot.img" "$build/zImage-dtb" "$dtb" "$build/initramfs.cpio.gz" "$build/readmem" "$build/reboot-bootloader" "$build/build-manifest.json"

@@ -343,8 +343,7 @@ static struct variant_data variant_qcom = {
 	.fifosize		= 16 * 4,
 	.fifohalfsize		= 8 * 4,
 	.clkreg			= MCI_CLK_ENABLE,
-	.clkreg_enable		= MCI_QCOM_CLK_FLOWENA |
-				  MCI_QCOM_CLK_SELECT_IN_FBCLK,
+	.clkreg_enable		= MCI_QCOM_CLK_FLOWENA,
 	.clkreg_8bit_bus_enable = MCI_QCOM_CLK_WIDEBUS_8,
 	.datactrl_mask_ddrmode	= MCI_QCOM_CLK_SELECT_IN_DDR_MODE,
 	.cmdreg_cpsm_enable	= MCI_CPSM_ENABLE,

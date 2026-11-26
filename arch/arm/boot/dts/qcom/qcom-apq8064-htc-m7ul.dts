@@ -3,6 +3,7 @@
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/leds/common.h>
 #include <dt-bindings/mfd/qcom-rpm.h>
+#include <dt-bindings/pinctrl/qcom,pmic-gpio.h>
 
 #include "qcom-apq8064-v2.0.dtsi"
 #include "pm8821.dtsi"
@@ -41,14 +42,6 @@
 		reset-gpios = <&pm8921_gpio 16 GPIO_ACTIVE_LOW>;
 		post-power-on-delay-ms = <120>;
 		power-off-delay-us = <1000>;
-	};
-
-	wlan_reg_on: regulator-wlan-reg-on {
-		compatible = "regulator-fixed";
-		regulator-name = "wlan-reg-on";
-		regulator-min-microvolt = <2900000>;
-		regulator-max-microvolt = <2900000>;
-		regulator-always-on;
 	};
 
 	reserved-memory {
@@ -196,6 +189,20 @@
 	interrupts-extended = <&tlmm_pinmux 76 IRQ_TYPE_LEVEL_LOW>;
 };
 
+&pm8921_gpio {
+	pinctrl-names = "default";
+	pinctrl-0 = <&wlan_reg_on_pin>;
+
+	wlan_reg_on_pin: wlan-reg-on-pin {
+		pins = "gpio16";
+		function = "normal";
+		bias-disable;
+		drive-push-pull;
+		qcom,drive-strength = <PMIC_GPIO_STRENGTH_LOW>;
+		power-source = <PM8921_GPIO_S4>;
+	};
+};
+
 &pm8921 {
 	interrupts-extended = <&tlmm_pinmux 74 IRQ_TYPE_LEVEL_LOW>;
 
@@ -290,6 +297,12 @@
 			bias-pull-down;
 		};
 
+		pm8921_l7: l7 {
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			bias-pull-down;
+		};
+
 		pm8921_l15: l15 {
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <2950000>;
@@ -329,13 +342,13 @@
 
 	#address-cells = <1>;
 	#size-cells = <0>;
-	vmmc-supply = <&wlan_reg_on>;
-	vqmmc-supply = <&wlan_reg_on>;
+	vmmc-supply = <&pm8921_l6>;
+	vqmmc-supply = <&pm8921_l7>;
 	mmc-pwrseq = <&wlan_pwrseq>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&wlan_sdcc3_pins>;
 	bus-width = <1>;
-	max-frequency = <25000000>;
+	max-frequency = <400000>;
 	non-removable;
 	status = "okay";
 

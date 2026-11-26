@@ -65,10 +65,6 @@ int sdio_enable_func(struct sdio_func *func)
 	if (!func)
 		return -EINVAL;
 
-	/* The host initializes functions on cards without standard CCCRs. */
-	if (func->card->quirks & MMC_QUIRK_NONSTD_SDIO)
-		return 0;
-
 	pr_debug("SDIO: Enabling device %s...\n", sdio_func_id(func));
 
 	ret = mmc_io_rw_direct(func->card, 0, 0, SDIO_CCCR_IOEx, 0, &reg);

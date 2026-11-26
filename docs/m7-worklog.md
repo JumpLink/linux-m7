@@ -111,22 +111,41 @@ The current work adds:
 - WLAN, SDCC3, MMC-host and deferred-probe benchmark markers
 
 The MMC trace proved that the chip responds to CMD5, CMD3, CMD7 and common CIS
-reads. Standard FBR access fails. A late `brcm,bcm4335-fmac` fixup now marks the
-card `MMC_QUIRK_NONSTD_SDIO`; the MMC core skips per-function FBR/CIS probing,
-FBR block-size writes and CCCR function enable for that quirk.
+reads. Standard FBR access fails. A late `brcm,bcm4335-fmac` fixup marks the
+card `MMC_QUIRK_NONSTD_SDIO`; the MMC core skips per-function FBR/CIS probing
+and FBR block-size writes. The first checkpoint also skipped CCCR function
+enable, which let brcmfmac reach the Function 1 ChipClkCSR access. That access
+timed out, so `wlan0` did not exist. A PM8921 GPIO 43 `func2` experiment did not
+change the failure and was reverted.
 
-Current result: SDCC3 initializes, the kernel reports a new SDIO card and
-brcmfmac reaches the Function 1 ChipClkCSR access. That access still times out,
-so `wlan0` does not exist yet. A PM8921 GPIO 43 `func2` experiment did not change
-the failure and was reverted. This is a bootable checkpoint: USB, eMMC and
-touchscreen remain functional.
+### 2026-11-26: Function 1 enable diagnosis
+
+The published bcmdhd path enables F1 through the host claim and a direct
+`SDIO_CCCR_IOEx` write. It does not mark F1 as already enabled. The local
+`sdio_enable_func()` bypass was therefore incorrect and has been removed in the
+current work tree.
+
+A quoted `dyndbg=` parameter in the boot-image command line made HBOOT 1.61
+report `Active cmdline overflow! (1047 Bytes)`. That run never started Mainline
+and is not a WLAN result. Repackaging with the previous 136-byte command line
+booted normally.
+
+The valid follow-up runs measured:
+
+- standard `sdio_enable_func()`: `CCCR_IOEx` read returns `-110`
+- tagged MMC instrumentation: the controller reports command timeout on that
+  read, not CRC or response-decoding failure
+- direct `CCCR_IOEx` write, matching bcmdhd: the write also returns `-110`
+
+F1 remains inactive. The current direct-write branch and tagged logs are
+experiments, not a completed fix. USB, eMMC and touchscreen remain functional.
 
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
 Pstore across failed boots, returns automatically to TWRP and runs the
-Synaptics touchscreen. WLAN has a recognized SDIO bus and a progressing
-brcmfmac probe, but is not yet operational.
+Synaptics touchscreen. WLAN has a recognized SDIO bus, but Function 1 is not
+active and `wlan0` is not operational.
 
 ## Validation
 
@@ -138,7 +157,7 @@ brcmfmac probe, but is not yet operational.
 
 ## Next steps
 
-1. Resolve the BCM4335 Function 1 ChipClkCSR timeout.
+1. Resolve the BCM4335 Function 1 enable timeout at `CCCR_IOEx`.
 2. Provide a usable NVRAM. No freely licensed M7-specific file is public; any
    device-local calibration must stay outside git.
 3. Re-enable 4-bit and high-speed SDIO only after 1-bit operation is stable.

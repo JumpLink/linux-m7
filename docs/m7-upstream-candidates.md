@@ -16,12 +16,14 @@ Candidate series:
 
 1. Add a compatible-based BCM4335 `MMC_QUIRK_NONSTD_SDIO` fixup after the
    common CIS has been read.
-2. Skip FBR block-size writes and CCCR function enable for cards explicitly
-   marked `MMC_QUIRK_NONSTD_SDIO`.
+2. Skip FBR block-size writes for cards explicitly marked
+   `MMC_QUIRK_NONSTD_SDIO`.
 
-Evidence: the M7 BCM4335 responds to common CIS reads but not standard FBR or
-CCCR writes. The changes move brcmfmac from an early SDIO timeout to the
-Function 1 ChipClkCSR access.
+Evidence: the M7 BCM4335 responds to common CIS reads but not standard FBR
+access. Skipping FBR/CIS probing and block-size writes lets brcmfmac reach its
+Function 1 setup. A separate experiment showed that bypassing F1 enable only
+moves the failure to ChipClkCSR. Published bcmdhd code does enable F1, so the
+bypass is not an upstream candidate.
 
 Open risks:
 
@@ -29,7 +31,8 @@ Open risks:
   `brcm,bcm4335-fmac`; confirm that all affected modules share this behavior.
 - Prove that standard SDIO and eMMC behavior is unchanged.
 - Add a focused test or at least a documented multi-board regression matrix.
-- The final ChipClkCSR timeout is still unresolved, so this series is not ready.
+- F1 enable still times out on both `CCCR_IOEx` read and direct write. Resolve
+  that before proposing any change to `sdio_enable_func()`.
 
 ## 2. APQ8064 pinctrl registration order
 

@@ -25,9 +25,12 @@ The imported basis is Linux 7.1.0 at upstream commit
   PM8921 LDO 15
 - volume keys, reboot-mode handling and a 1 MiB Pstore/Ramoops region
 
-WLAN has a bootable checkpoint: SDCC3 recognizes the BCM4335 SDIO card and
-brcmfmac reaches the Function 1 ChipClkCSR access, but `wlan0` is not created
-yet. Display, audio, Bluetooth, modem and cameras remain separate milestones.
+WLAN has a bootable checkpoint: SDCC3 recognizes the BCM4335 SDIO card, but
+Function 1 is not active and `wlan0` is not created yet. The committed
+checkpoint reached ChipClkCSR only because it skipped F1 enable. Follow-up
+measurements show that both the standard `CCCR_IOEx` read and a direct write
+time out. Display, audio, Bluetooth, modem and cameras remain separate
+milestones.
 The camera has no mainline APQ8064 driver and is a separate long-term project.
 
 The full history, current result and upstream candidates are recorded in

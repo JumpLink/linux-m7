@@ -140,6 +140,11 @@ The valid follow-up runs measured:
 F1 remains inactive. The current direct-write branch and tagged logs are
 experiments, not a completed fix. USB, eMMC and touchscreen remain functional.
 
+The SSBI PMIC GPIO binding uses one-based GPIO cells. The Mainline driver
+subtracts `PM8XXX_GPIO_PHYSICAL_OFFSET` from GPIO and IRQ offsets, so the M7
+values 16 for `WL_REG_ON` and 38 for host wake are correct. A temporary test
+with GPIO cell 15 prevented SDIO initialization and was reverted.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves

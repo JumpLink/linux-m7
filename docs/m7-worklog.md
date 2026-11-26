@@ -200,6 +200,41 @@ A QCOM-specific dummy CMD52 after each CMD53 write was also tested. It matched
 the old MSM driver and returned success, but did not prevent the reset, so it
 was removed.
 
+### 2026-11-26: low-speed download is not a FIFO or clock-bit problem
+
+Probes 63 to 74 tested the remaining small controller hypotheses. None completed
+the download:
+
+- `datactrl_first` for QCOM: immediate CRC failure `-84`.
+- 63-block byte-mode limit at 400 kHz: first 4 KiB transfer stopped after 259
+  bytes.
+- `MMC_QUIRK_BLKSZ_FOR_BYTE_MODE` (64-byte CMD53): brcmfmac reached firmware
+  selection but the first transfer did not start.
+- 32-byte FIFO bursts with 64-byte and 32-byte blocks: no completed transfer.
+- Leaving `MMCIMASK1` enabled for QCOM until `DATAEND`: no completed transfer.
+- `MCI_QCOM_CLK_SELECT_IN_FBCLK` alone and together with bit 24: no completed
+  transfer; the 32-byte run stopped after 5 bytes.
+- 500 ms `WL_REG_ON` post-power-on delay: no completed transfer.
+- HTC `fw_bcm4335_b0.bin` from the public LineageOS M7 vendor repository:
+  same first-transfer stall, so the generic firmware blob is not the cause.
+
+The best observed run remains 32-byte blocks with the normal 64-byte FIFO
+bursts: 259 bytes moved, then the TX FIFO was full, `MMCIMASK1` was zero and
+`MMCIDATACNT` still held the remaining byte count. The later 64-byte and
+clock-bit variants were worse. All temporary controller changes were reverted;
+the tree is clean at `4b63372ef` plus the documentation update.
+
+Two infrastructure changes landed and were pushed:
+
+- `c3ac95599` refuses every fastboot target whose `product` is not `m7_ul`.
+- `4b63372ef` adds `/bin/reboot-bootloader`, a small static ARM helper that
+  calls the Linux reboot syscall with `bootloader`, and uses it for the
+  diagnostic no-console reboot.
+
+The helper reaches the HBOOT menu, but the M7 USB port does not always
+re-enumerate fastboot without a power keypress. The product guard and lease
+remain mandatory for every write.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves

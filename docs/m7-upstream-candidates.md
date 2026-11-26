@@ -77,6 +77,13 @@ Open risks:
 - Measure the throughput cost and test other low-speed SDIO devices.
 - Decide whether the threshold belongs in the MMC core or in brcmfmac.
 
+Rejected variants from probes 63 to 74: `datactrl_first`, a 63-block limit,
+64-byte CMD53 with `MMC_QUIRK_BLKSZ_FOR_BYTE_MODE`, 32-byte FIFO bursts,
+keeping `MMCIMASK1` enabled until `DATAEND`, the QCOM feedback-clock bits, a
+500 ms WL reset delay and the public HTC `fw_bcm4335_b0.bin`. None completed
+the first transfer. The 32-byte block with normal 64-byte FIFO bursts remains
+the furthest run (259 bytes).
+
 ## 4. APQ8064 pinctrl registration order
 
 Files:

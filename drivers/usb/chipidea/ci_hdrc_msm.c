@@ -4,6 +4,7 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
+#include <linux/usb.h>
 #include <linux/usb/chipidea.h>
 #include <linux/clk.h>
 #include <linux/reset.h>
@@ -84,8 +85,6 @@ static int ci_hdrc_msm_notify_event(struct ci_hdrc *ci, unsigned event)
 
 	switch (event) {
 	case CI_HDRC_CONTROLLER_RESET_EVENT:
-		dev_dbg(dev, "CI_HDRC_CONTROLLER_RESET_EVENT received\n");
-
 		hw_phymode_configure(ci);
 		if (msm_ci->secondary_phy) {
 			u32 val = readl_relaxed(msm_ci->base + HS_PHY_SEC_CTRL);
@@ -190,6 +189,11 @@ static int ci_hdrc_msm_probe(struct platform_device *pdev)
 	ci->pdata.flags	= CI_HDRC_REGS_SHARED | CI_HDRC_DISABLE_STREAMING |
 			  CI_HDRC_OVERRIDE_AHB_BURST |
 			  CI_HDRC_OVERRIDE_PHY_CONTROL;
+	if (usb_get_dr_mode(&pdev->dev) == USB_DR_MODE_PERIPHERAL) {
+		/* Peripheral boards do not need OTG session detection. */
+		ci->pdata.flags |= CI_HDRC_DUAL_ROLE_NOT_OTG |
+				   CI_HDRC_FORCE_VBUS_ACTIVE_ALWAYS;
+	}
 	ci->pdata.notify_event = ci_hdrc_msm_notify_event;
 
 	reset = devm_reset_control_get(&pdev->dev, "core");

@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
+#include "qcom-apq8064-htc-m7ul.dts"
+
+/*
+ * Panic and emergency restart pass a NULL reboot command. Map that to recovery
+ * so a failed diagnostic boot leaves its Pstore records available over adb.
+ */
+&reboot_mode {
+	mode-normal = <0x77665502>;
+};

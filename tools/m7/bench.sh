@@ -10,9 +10,15 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 image=${1:-"$root/build/m7/boot.img"}
 run=${2:-"$root/build/m7/runs/$(date -u +%Y%m%dT%H%M%SZ)"}
 duration=${DURATION:-30}
+tty_timeout=${M7_TTY_TIMEOUT:-30}
 serial=${FASTBOOT_SERIAL:-}
 method=${M7_BOOT_METHOD:-boot}
 partition=
+
+if ! [[ "$tty_timeout" =~ ^[1-9][0-9]*$ ]]; then
+	echo "M7_TTY_TIMEOUT must be a positive integer" >&2
+	exit 1
+fi
 
 case "$method" in
 	boot)
@@ -47,7 +53,7 @@ if [ -z "$serial" ]; then
 	serial=${serials[0]}
 fi
 
-fastboot -s "$serial" getvar product >/dev/null
+timeout 15 fastboot -s "$serial" getvar product >/dev/null
 mkdir -p "$run"
 run=$(cd "$run" && pwd)
 
@@ -56,7 +62,7 @@ start_epoch=$(date +%s)
 dump_fastboot() {
 	local var value
 	for var in product platform version-bootloader version-baseband version-misc security battery-status battery-voltage; do
-		value=$(fastboot -s "$serial" getvar "$var" 2>&1 | sed -n "s/^$var: //p" | tail -n 1)
+		value=$(timeout 3 fastboot -s "$serial" getvar "$var" 2>&1 | sed -n "s/^$var: //p" | tail -n 1)
 		printf '%s=%s\n' "$var" "$value"
 	done
 }
@@ -83,7 +89,7 @@ fi
 set -e
 
 tty=
-for _ in $(seq 1 100); do
+for _ in $(seq 1 $((tty_timeout * 10))); do
 	if compgen -G '/dev/ttyACM*' >/dev/null; then
 		tty=$(ls -t /dev/ttyACM* | head -n 1)
 		break

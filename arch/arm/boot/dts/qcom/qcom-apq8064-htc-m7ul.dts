@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
+#include <dt-bindings/leds/common.h>
 #include <dt-bindings/mfd/qcom-rpm.h>
 
 #include "qcom-apq8064-v2.0.dtsi"
@@ -20,9 +21,34 @@
 		stdout-path = "serial0:115200n8";
 	};
 
-	memory@0 {
+	memory@80600000 {
 		device_type = "memory";
-		reg = <0x80600000 0x7fa00000>;
+		reg = <0x80600000 0x08600000>;
+	};
+
+	memory@89000000 {
+		device_type = "memory";
+		reg = <0x89000000 0x03f00000>;
+	};
+
+	memory@90000000 {
+		device_type = "memory";
+		reg = <0x90000000 0x70000000>;
+	};
+
+	reserved-memory {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		ramoops@86000000 {
+			compatible = "ramoops";
+			reg = <0x86000000 0x100000>;
+			record-size = <0x20000>;
+			console-size = <0x20000>;
+			ftrace-size = <0x20000>;
+			pmsg-size = <0x10000>;
+		};
 	};
 
 	gpio-keys {
@@ -48,9 +74,9 @@
 			compatible = "qcom,apq8064-imem", "syscon", "simple-mfd";
 			reg = <0x2a03f000 0x1000>;
 
-			reboot-mode {
+			reboot_mode: reboot-mode {
 				compatible = "syscon-reboot-mode";
-				offset = <0x65c>;
+				offset = <0xf00>;
 
 				mode-normal = <0x77665501>;
 				mode-bootloader = <0x77665500>;
@@ -86,6 +112,23 @@
 
 &pm8921 {
 	interrupts-extended = <&tlmm_pinmux 74 IRQ_TYPE_LEVEL_LOW>;
+
+	m7_green_led: led@131 {
+		compatible = "qcom,pm8058-led";
+		reg = <0x131>;
+		label = "m7:green";
+		color = <LED_COLOR_ID_GREEN>;
+		default-state = "off";
+		linux,default-trigger = "heartbeat";
+	};
+
+	m7_amber_led: led@132 {
+		compatible = "qcom,pm8058-led";
+		reg = <0x132>;
+		label = "m7:amber";
+		color = <LED_COLOR_ID_AMBER>;
+		default-state = "off";
+	};
 };
 
 &rpm {
@@ -196,6 +239,9 @@
 };
 
 &usb1 {
+	clocks = <&rpmcc RPM_DAYTONA_FABRIC_CLK>, <&gcc USB_HS1_H_CLK>,
+		 <&gcc USB_HS1_XCVR_CLK>;
+	clock-names = "iface", "core", "fs";
 	dr-mode = "peripheral";
 	status = "okay";
 };

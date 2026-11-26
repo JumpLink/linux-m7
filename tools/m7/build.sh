@@ -3,6 +3,8 @@ set -euo pipefail
 
 # Build a first-boot mainline image for the HTC One M7 (m7ul).
 # Usage: BUSYBOX=/path/to/static-arm-busybox ./tools/m7/build.sh [build-dir]
+# SKIP_KERNEL_BUILD=1 packages existing kernel artifacts; SKIP_READER_BUILD=1
+# reuses a prebuilt readmem when the ARM compiler is unavailable on the host.
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
 build=${1:-"$root/build/m7"}
@@ -11,8 +13,11 @@ cross=${CROSS_COMPILE:-arm-linux-gnu-}
 jobs=${JOBS:-$(nproc)}
 
 tools=(cpio gzip mkbootimg python3 readelf)
+if [ "${SKIP_READER_BUILD:-0}" != 1 ]; then
+	tools+=("$cross"gcc)
+fi
 if [ "${SKIP_KERNEL_BUILD:-0}" != 1 ]; then
-	tools+=(make "$cross"gcc)
+	tools+=(make)
 fi
 for tool in "${tools[@]}"; do
 	command -v "$tool" >/dev/null || {
@@ -32,8 +37,19 @@ fi
 
 cmdline=${M7_CMDLINE:-"console=ttyGS0 root=/dev/ram0 rw init=/init loglevel=7 ignore_loglevel"}
 dtb_name=${M7_DTB:-qcom-apq8064-htc-m7ul}
+base=0x80600000
+kernel_offset=0x00008000
+ramdisk_offset=${M7_RAMDISK_OFFSET:-0x04000000}
 
 mkdir -p "$build"
+if [ "${SKIP_READER_BUILD:-0}" != 1 ]; then
+	"$cross"gcc -marm -nostdlib -static -O2 -Wall -Wextra \
+		-fno-builtin -fno-stack-protector -Wl,-e,_start \
+		-o "$build/readmem" "$root/tools/m7/readmem.c"
+elif [ ! -x "$build/readmem" ]; then
+	echo "missing prebuilt ARM reader: $build/readmem" >&2
+	exit 1
+fi
 if [ "${SKIP_KERNEL_BUILD:-0}" != 1 ]; then
 	make -C "$root" O="$build" ARCH=arm CROSS_COMPILE="$cross" m7_defconfig
 	if [ -n "${M7_CMDLINE:-}" ]; then
@@ -49,6 +65,30 @@ dtb=$build/arch/arm/boot/dts/qcom/$dtb_name.dtb
 	echo "missing kernel artifacts in $build" >&2
 	exit 1
 }
+if grep -q '^CONFIG_AUTO_ZRELADDR=y' "$build/.config"; then
+	echo "M7 requires CONFIG_AUTO_ZRELADDR=n; RAM starts at 0x80600000" >&2
+	exit 1
+fi
+if ! grep -q '^CONFIG_PHYS_OFFSET=0x80600000$' "$build/.config"; then
+	echo "M7 requires CONFIG_PHYS_OFFSET=0x80600000" >&2
+	exit 1
+fi
+image=$build/arch/arm/boot/Image
+[ -s "$image" ] || {
+	echo "missing decompressed kernel image in $build" >&2
+	exit 1
+}
+kernel_end=$((base + kernel_offset + $(stat -c %s "$image")))
+ramdisk_addr=$((base + ramdisk_offset))
+if (( ramdisk_addr < kernel_end + 0x100000 )); then
+	echo "ramdisk at $ramdisk_offset overlaps the kernel; raise M7_RAMDISK_OFFSET" >&2
+	exit 1
+fi
+if [ "${M7_EARLY_REBOOT_MODE:-0}" = 1 ]; then
+	python3 "$root/tools/m7/patch_zimage_early_reboot.py" "$kernel"
+else
+	python3 "$root/tools/m7/patch_zimage_early_reboot.py" --forbid-patched "$kernel"
+fi
 cat "$kernel" "$dtb" > "$build/zImage-dtb"
 
 initramfs=$build/initramfs
@@ -59,6 +99,9 @@ for applet in sh mount mkdir ls head sleep ln echo cat uname dmesg hostname powe
 	ln -s busybox "$initramfs/bin/$applet"
 done
 install -m 0755 "$root/tools/m7/initramfs/init" "$initramfs/init"
+if [ "${M7_DIAGNOSTIC_REBOOT:-0}" = 1 ]; then
+	: > "$initramfs/m7-diag-reboot"
+fi
 printf 'root:x:0:0:root:/root:/bin/sh\n' > "$initramfs/etc/passwd"
 printf 'root:x:0:\n' > "$initramfs/etc/group"
 
@@ -70,9 +113,9 @@ printf 'root:x:0:\n' > "$initramfs/etc/group"
 mkbootimg \
 	--kernel "$build/zImage-dtb" \
 	--ramdisk "$build/initramfs.cpio.gz" \
-	--base 0x80600000 \
-	--kernel_offset 0x00008000 \
-	--ramdisk_offset 0x01800000 \
+	--base "$base" \
+	--kernel_offset "$kernel_offset" \
+	--ramdisk_offset "$ramdisk_offset" \
 	--second_offset 0x00f00000 \
 	--tags_offset 0x00000100 \
 	--pagesize 2048 \
@@ -81,9 +124,10 @@ mkbootimg \
 	--cmdline "$cmdline" \
 	--output "$build/boot.img"
 
-sha256sum "$build/boot.img" "$build/zImage-dtb" "$dtb" "$build/initramfs.cpio.gz" "$build/.config" > "$build/SHA256SUMS"
+sha256sum "$build/boot.img" "$build/zImage-dtb" "$dtb" "$build/initramfs.cpio.gz" "$build/readmem" "$build/.config" > "$build/SHA256SUMS"
 
-python3 - "$build" "$root" "$cmdline" "$dtb_name" <<'PY'
+python3 - "$build" "$root" "$cmdline" "$dtb_name" "$ramdisk_offset" \
+	"${M7_EARLY_REBOOT_MODE:-0}" "${M7_DIAGNOSTIC_REBOOT:-0}" <<'PY'
 import datetime
 import hashlib
 import json
@@ -95,6 +139,9 @@ build = pathlib.Path(sys.argv[1])
 root = pathlib.Path(sys.argv[2])
 cmdline = sys.argv[3]
 dtb_name = sys.argv[4]
+ramdisk_offset = sys.argv[5]
+early_reboot_mode = sys.argv[6] == "1"
+diagnostic_reboot = sys.argv[7] == "1"
 
 def digest(path):
     h = hashlib.sha256()
@@ -133,15 +180,18 @@ manifest = {
         "dtb": dtb_name,
         "dtb_sha256": digest(build / "arch/arm/boot/dts/qcom" / (dtb_name + ".dtb")),
         "initramfs_sha256": digest(build / "initramfs.cpio.gz"),
+        "readmem_sha256": digest(build / "readmem"),
         "base": "0x80600000",
         "kernel_offset": "0x00008000",
-        "ramdisk_offset": "0x01800000",
+        "ramdisk_offset": ramdisk_offset,
         "pagesize": 2048,
         "cmdline": cmdline,
         "debug_channel": "usb-acm",
+        "early_reboot_mode": early_reboot_mode,
+        "diagnostic_reboot": diagnostic_reboot,
     },
 }
 (build / "build-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 PY
 
-ls -lh "$build/boot.img" "$build/zImage-dtb" "$dtb" "$build/initramfs.cpio.gz" "$build/build-manifest.json"
+ls -lh "$build/boot.img" "$build/zImage-dtb" "$dtb" "$build/initramfs.cpio.gz" "$build/readmem" "$build/build-manifest.json"

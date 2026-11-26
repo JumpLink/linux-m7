@@ -1593,10 +1593,11 @@ int msm_pinctrl_probe(struct platform_device *pdev,
 	pctrl->desc.pins = pctrl->soc->pins;
 	pctrl->desc.npins = pctrl->soc->npins;
 
-	pctrl->pctrl = devm_pinctrl_register(&pdev->dev, &pctrl->desc, pctrl);
-	if (IS_ERR(pctrl->pctrl)) {
+	ret = devm_pinctrl_register_and_init(&pdev->dev, &pctrl->desc, pctrl,
+					     &pctrl->pctrl);
+	if (ret) {
 		dev_err(&pdev->dev, "Couldn't register pinctrl driver\n");
-		return PTR_ERR(pctrl->pctrl);
+		return ret;
 	}
 
 	for (i = 0; i < soc_data->nfunctions; i++) {
@@ -1606,6 +1607,11 @@ int msm_pinctrl_probe(struct platform_device *pdev,
 		if (ret < 0)
 			return ret;
 	}
+
+	/* gpiochip_add_data() resolves gpio-ranges through this provider. */
+	ret = pinctrl_enable(pctrl->pctrl);
+	if (ret)
+		return ret;
 
 	ret = msm_gpio_init(pctrl);
 	if (ret)

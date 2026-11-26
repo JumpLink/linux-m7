@@ -42,6 +42,11 @@ while [ ! -e /dev/ttyGS0 ] && [ "$i" -lt 50 ]; do
 	i=$((i + 1))
 done
 
+if [ ! -e /dev/ttyGS0 ] && [ -e /m7-diag-reboot ]; then
+	echo "m7-init: no USB console; diagnostic reboot" > /dev/console
+	reboot -f
+fi
+
 {
 	echo
 	echo "HTC One M7, mainline Linux"

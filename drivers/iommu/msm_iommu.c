@@ -358,22 +358,30 @@ static int msm_iommu_domain_config(struct msm_priv *priv)
 }
 
 /* Must be called under msm_iommu_lock */
-static struct msm_iommu_dev *find_iommu_for_dev(struct device *dev)
+static struct msm_iommu_ctx_dev *find_master_for_dev(struct msm_iommu_dev *iommu,
+						     struct device *dev)
 {
-	struct msm_iommu_dev *iommu, *ret = NULL;
 	struct msm_iommu_ctx_dev *master;
 
-	list_for_each_entry(iommu, &qcom_iommu_devices, dev_node) {
-		master = list_first_entry(&iommu->ctx_list,
-					  struct msm_iommu_ctx_dev,
-					  list);
-		if (master->of_node == dev->of_node) {
-			ret = iommu;
-			break;
-		}
+	list_for_each_entry(master, &iommu->ctx_list, list) {
+		if (master->of_node == dev->of_node)
+			return master;
 	}
 
-	return ret;
+	return NULL;
+}
+
+/* Must be called under msm_iommu_lock */
+static struct msm_iommu_dev *find_iommu_for_dev(struct device *dev)
+{
+	struct msm_iommu_dev *iommu;
+
+	list_for_each_entry(iommu, &qcom_iommu_devices, dev_node) {
+		if (find_master_for_dev(iommu, dev))
+			return iommu;
+	}
+
+	return NULL;
 }
 
 static struct iommu_device *msm_iommu_probe_device(struct device *dev)
@@ -405,34 +413,29 @@ static int msm_iommu_attach_dev(struct iommu_domain *domain, struct device *dev,
 
 	spin_lock_irqsave(&msm_iommu_lock, flags);
 	list_for_each_entry(iommu, &qcom_iommu_devices, dev_node) {
-		master = list_first_entry(&iommu->ctx_list,
-					  struct msm_iommu_ctx_dev,
-					  list);
-		if (master->of_node == dev->of_node) {
-			ret = __enable_clocks(iommu);
-			if (ret)
-				goto fail;
+		master = find_master_for_dev(iommu, dev);
+		if (!master)
+			continue;
 
-			list_for_each_entry(master, &iommu->ctx_list, list) {
-				if (master->num) {
-					dev_err(dev, "domain already attached");
-					ret = -EEXIST;
-					goto fail;
-				}
-				master->num =
-					msm_iommu_alloc_ctx(iommu->context_map,
-							    0, iommu->ncb);
-				if (IS_ERR_VALUE(master->num)) {
-					ret = -ENODEV;
-					goto fail;
-				}
-				config_mids(iommu, master);
-				__program_context(iommu->base, master->num,
-						  priv);
-			}
-			__disable_clocks(iommu);
-			list_add(&iommu->dom_node, &priv->list_attached);
+		ret = __enable_clocks(iommu);
+		if (ret)
+			goto fail;
+
+		if (master->num) {
+			dev_err(dev, "domain already attached");
+			ret = -EEXIST;
+			goto fail;
 		}
+		master->num = msm_iommu_alloc_ctx(iommu->context_map,
+						  0, iommu->ncb);
+		if (IS_ERR_VALUE(master->num)) {
+			ret = -ENODEV;
+			goto fail;
+		}
+		config_mids(iommu, master);
+		__program_context(iommu->base, master->num, priv);
+		__disable_clocks(iommu);
+		list_add(&iommu->dom_node, &priv->list_attached);
 	}
 
 fail:
@@ -601,18 +604,26 @@ static int insert_iommu_master(struct device *dev,
 				struct msm_iommu_dev **iommu,
 				const struct of_phandle_args *spec)
 {
-	struct msm_iommu_ctx_dev *master = dev_iommu_priv_get(dev);
+	struct msm_iommu_ctx_dev *master;
 	int sid;
 
-	if (list_empty(&(*iommu)->ctx_list)) {
-		master = kzalloc_obj(*master, GFP_ATOMIC);
-		if (!master) {
-			dev_err(dev, "Failed to allocate iommu_master\n");
-			return -ENOMEM;
-		}
-		master->of_node = dev->of_node;
-		list_add(&master->list, &(*iommu)->ctx_list);
-		dev_iommu_priv_set(dev, master);
+	list_for_each_entry(master, &(*iommu)->ctx_list, list) {
+		if (master->of_node == dev->of_node)
+			goto found;
+	}
+
+	master = kzalloc_obj(*master, GFP_ATOMIC);
+	if (!master) {
+		dev_err(dev, "Failed to allocate iommu_master\n");
+		return -ENOMEM;
+	}
+	master->of_node = dev->of_node;
+	list_add(&master->list, &(*iommu)->ctx_list);
+
+found:
+	if (master->num_mids == MAX_NUM_MIDS) {
+		dev_err(dev, "Too many stream IDs for IOMMU master\n");
+		return -ENOMEM;
 	}
 
 	for (sid = 0; sid < master->num_mids; sid++)

@@ -166,12 +166,6 @@ int sdio_set_block_size(struct sdio_func *func, unsigned blksz)
 	if (blksz == 0)
 		blksz = min3(func->max_blksize, func->card->host->max_blk_size, 512u);
 
-	/* Non-standard cards may not implement the FBR block-size registers. */
-	if (func->card->quirks & MMC_QUIRK_NONSTD_SDIO) {
-		func->cur_blksize = blksz;
-		return 0;
-	}
-
 	ret = mmc_io_rw_direct(func->card, 1, 0,
 		SDIO_FBR_BASE(func->num) + SDIO_FBR_BLKSIZE,
 		blksz & 0xff, NULL);
@@ -327,7 +321,9 @@ static int sdio_io_rw_ext_helper(struct sdio_func *func, int write,
 		return -EINVAL;
 
 	/* Do the bulk of the transfer using block mode (if supported). */
-	if (func->card->cccr.multi_block && (size > sdio_max_byte_size(func))) {
+	if (func->card->cccr.multi_block &&
+	    func->card->host->ios.clock > 1000000 &&
+	    size > sdio_max_byte_size(func)) {
 		/* Blocks per command is limited by host count, host transfer
 		 * size and the maximum for IO_RW_EXTENDED of 511 blocks. */
 		max_blocks = min(func->card->host->max_blk_count, 511u);

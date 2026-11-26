@@ -117,6 +117,12 @@ The bench waits up to 30 seconds for `/dev/ttyACM*`; override this with
 also sends an `M7_HOST_PROBE` command to verify a responsive shell when the
 original marker was written before capture started.
 
+Keep the boot-image command line short. HBOOT 1.61 reported
+`Active cmdline overflow! (1047 Bytes)` for a 186-byte line containing a quoted
+`dyndbg=` option, while the previous 136-byte line booted. Put quoted debug
+options in `CONFIG_CMDLINE` instead; the kernel still receives them when HBOOT
+supplies its shorter command line.
+
 If `fastboot boot` does not execute the image, the same tool can write and
 reboot the `boot` partition. It refuses every partition except `boot`:
 

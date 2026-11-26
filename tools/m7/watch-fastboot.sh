@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+root=$(cd "$(dirname "$0")/../.." && pwd)
+
 # Wait for the M7 and move any adb state into fastboot.
 # Usage: FASTBOOT_SERIAL=... ./tools/m7/watch-fastboot.sh [timeout-seconds]
 
@@ -22,7 +24,7 @@ deadline=$((SECONDS + timeout_seconds))
 while (( SECONDS < deadline )); do
 	if timeout 2 fastboot devices -l 2>/dev/null \
 		| awk -v serial="$serial" '$1 == serial && $2 == "fastboot" { found = 1 } END { exit !found }'; then
-		if timeout 5 fastboot -s "$serial" getvar product >/dev/null 2>&1; then
+		if "$root/tools/m7/require-m7-fastboot.sh" "$serial" >/dev/null 2>&1; then
 			echo "M7 is ready in fastboot"
 			exit 0
 		fi

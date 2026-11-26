@@ -53,7 +53,7 @@ if [ -z "$serial" ]; then
 	serial=${serials[0]}
 fi
 
-timeout 15 fastboot -s "$serial" getvar product >/dev/null
+"$root/tools/m7/require-m7-fastboot.sh" "$serial"
 mkdir -p "$run"
 run=$(cd "$run" && pwd)
 

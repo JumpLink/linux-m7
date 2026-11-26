@@ -27,7 +27,7 @@ adb_state() {
 fastboot_ready() {
 	timeout 3 fastboot devices -l 2>/dev/null \
 		| awk -v serial="$serial" '$1 == serial && $2 == "fastboot" { found = 1 } END { exit !found }' \
-		&& timeout 5 fastboot -s "$serial" getvar product >/dev/null 2>&1
+		&& "$root/tools/m7/require-m7-fastboot.sh" "$serial" >/dev/null 2>&1
 }
 
 deadline=$((SECONDS + timeout_seconds))

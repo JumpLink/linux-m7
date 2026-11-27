@@ -887,6 +887,24 @@ held. With `rxhdr` far ahead of `rxdata`, most header reads return stale FIFO
 contents instead of a real header. The next focused experiment is a PIO
 FIFO-drain check at the frame boundary, not a clock or DMA change.
 
+### 2026-11-28: Probe 109 disproves the FIFO-drain theory
+
+Probe 109 logs `MMCIFIFOCNT` after every PIO read and at every SDIO DATAEND.
+
+- All 267 `pio_read` calls end with `fifocnt=0`, and no `dataend` shows a FIFO
+  remainder. The PIO path drains cleanly; there is no stale tail.
+- A scan triggers six short reads (`got=4 remain=12/8/4`) at 122 to 125 s. Their
+  status `0x004c2c00` has `RXFIFOEMPTY` (bit 19) and `RXACTIVE` (bit 13) but
+  not `RXDATAAVLBL` (bit 21). Normal reads carry `RXDATAAVLBL` (`0x0066a400`).
+- So the FIFO is empty, not stale: at 1 MHz the card delivers data slowly enough
+  that `RXDATAAVLBL` drops between words while the frame is still active on the
+  bus, and the PIO loop exits with `remain > 0` before the rest arrives.
+
+The corruption is therefore a clock-too-slow delivery race at 1 MHz, not a PIO
+drain bug and not DMA. The `86 7a 88 52` bytes are genuinely in the FIFO and
+read out cleanly; they are a frame the host sampled mid-delivery. The next
+experiment is a higher SDCC3 clock, which was always a separate open test.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
@@ -970,19 +988,22 @@ proven 1-bit bus.
   `41e22ade2`. Every SDIO transfer logged `clock=1000000 width=0` and fell back
   to PIO; a scan logged three bad headers, the first again carrying the MAC
   bytes with `rxhdr` far ahead of `rxdata`.
+- Probe 109 returned `OKAY` from flash and reboot from clean commit
+  `7a1063a5c`. All 267 PIO reads drained to `fifocnt=0` and no DATAEND showed a
+  FIFO remainder, disproving the drain theory. A scan produced six short reads
+  whose status has `RXFIFOEMPTY` and `RXACTIVE` but not `RXDATAAVLBL`, so the
+  frame is still active on the bus when the PIO loop exits at 1 MHz.
 
 ## Next steps
 
-1. Fix the PIO FIFO drain at the frame boundary that leaves stale bytes for the
-   next header read at 1 MHz byte mode; this is the root cause of the HW header
-   checksum errors and the post-burst stall. DMA is ruled out: it is disabled by
-   design for transfers below the FIFO size.
-2. Build a focused probe that logs the FIFO count and the bytes left at each
-   frame boundary before changing the PIO path.
-3. Investigate higher clock rates separately after the receive path is stable.
-4. Investigate OOB routing and MMCI SDIO IRQ support after the stable polling
+1. Test a higher SDCC3 clock. Probe 109 shows the 1 MHz receive corruption is a
+   delivery race: `RXDATAAVLBL` drops between words while the frame is still
+   active, so the PIO loop exits early. DMA and PIO drain are both ruled out.
+2. Keep the FIFO-drain and bad-header traces in place to confirm the higher
+   clock removes the short reads.
+3. Investigate OOB routing and MMCI SDIO IRQ support after the stable polling
    path is recorded.
-5. Continue with display, audio, Bluetooth and modem as separate milestones.
+4. Continue with display, audio, Bluetooth and modem as separate milestones.
 
 See also:
 

@@ -540,56 +540,95 @@ DTB SHA-256 is
 packaged firmware and p6 NVRAM match the confirmed Probe 90 hashes. The kernel
 release remains `7.1.0-g17664778f3fa-dirty` because only the DTB changed.
 
-No Fastboot device is visible, so Probe 91 has not run on hardware. Its pass
-condition is `oob_irq_seen`, a nonzero brcmfmac interrupt count, `SEPINT=0x07` and
-a complete live `M7_HOST_PROBE` with `M7_WLAN_PRESENT=yes`. If it still times out,
-the next single-variable test removes the GPIO 38 pull-down; it must not also
-change the IRQ type again.
+Run `20261127T155624Z` flashed only `boot` through the lease and product guard,
+then rebooted successfully. The initial probe was too early; a later read-only
+probe at 186.38 s captured the complete trace. `SEPINT=0x07` proves that the
+active-high selection reached the chip. The control wait still ended with
+`condition=0`, `pending=0`, `rxlen=0`, `oob_line=0`, `intrcount=0` and
+`bus_preinit ret=-110`. A complete live probe reports `M7_WLAN_PRESENT=no`.
+
+### 2026-11-27: Probe 92 removes the host-wake pull
+
+Commit `c92801c4f` adds only `bias-disable` to PM8921 GPIO 38. Probe 92 reuses the
+Probe 91 kernel payload and the confirmed firmware and p6 NVRAM. Its `boot.img`
+SHA-256 is
+`21383c2bba5f20a56c1bb6b5b0bc690a2a37dddc66dcb41e58e96c851f381096`.
+
+Run `20261127T160424Z` again used the guarded `boot`-only flash path. The complete
+late probe at 102.38 s confirms `gpio38: in normal VIN2 no pull`. The chip still
+reports `SEPINT=0x07`, but `oob_line=0`, `intrcount=0`, `rxlen=0` and
+`bus_preinit ret=-110`. The complete live probe reports `M7_WLAN_PRESENT=no`.
+The pull-down is therefore not the cause of the missing OOB interrupt.
+
+Both Probes 91 and 92 leave `intstatus=0x208000c0`, `hostintmask=0x200000f0`,
+`tohostmailbox=4` and `tohostdata=0x00040008` at the timeout. Response-side data
+is pending, but no host interrupt consumes it. Probe 93 will remove only the OOB
+interrupt entry so the MMC core polls `SDIO_CCCR_INTx`. If that consumes the
+pending status, the fault is in OOB delivery rather than the SDIO control frame.
+
+Probe 93 reuses the same kernel, firmware, p6 NVRAM, 400 kHz clock, 1-bit bus and
+GPIO configuration. Its `boot.img` SHA-256 is
+`70ce4cce4b547282c1ded1406e41aa4a5b155f05b2071b4038069cdb49dc929f`.
+An attempted automatic `reboot-bootloader` transition from Probe 92 enumerated
+as Qualcomm `QHSUSB_DLOAD` instead of Fastboot. No EDL write was attempted. A
+physical power cycle and manual Fastboot selection restored the guarded path.
+
+Run `20261127T162002Z` verified `product: m7_ul`, flashed only `boot` through the
+lease, and rebooted. The first capture returned before brcmfmac finished, so it
+did not count as validation. A later read-only capture at 114.86 s completed the
+live probe and the full dmesg block. It reports `M7_WLAN_PRESENT=yes` and
+`M7_WLAN_STATE=down`.
+
+The trace now shows `irq_register_enter oob=0`. The first control response arrives
+in about 4 ms, `bus_preinit ret=0`, and `attach_done err=0`. This proves that the
+firmware control path works. The QCOM MMCI variant does not advertise in-band
+SDIO IRQ support, so the MMC core polls `SDIO_CCCR_INTx` and dispatches the SDIO
+function handler. OOB delivery remains broken on this board, but polling is a
+working fallback.
 
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
 Pstore across failed boots, returns automatically to TWRP and runs the
-Synaptics touchscreen. WLAN enumerates the BCM4335, enables Function 1 and
-completes the firmware and p6 NVRAM download. Probe 89 releases the CR4 reset and
-sends the first control frame, but receives no response. Probe 90 ran on hardware
-and captured the timeout state. The device mailbox has response-side data, while
-the host reports no receive event and no brcmfmac interrupt. A complete live
-`M7_HOST_PROBE` confirms that `wlan0` is absent. The shell remains responsive.
-The live diagnostics identify a mismatch between Downstream's active-high OOB
-request and the M7 DTS falling-edge request. Probe 91 corrects only that type and
-is built, but it still needs a guarded hardware boot.
+Synaptics touchscreen. BCM4335 Function 1, firmware download, confirmed p6 NVRAM
+and CR4 startup work. Probe 93 completes brcmfmac initialization over MMC SDIO
+interrupt polling and a complete live `M7_HOST_PROBE` reports
+`M7_WLAN_PRESENT=yes`. The interface remains down. Active-high OOB and no-pull
+tests both failed before polling succeeded, so the remaining OOB fault is in
+signal delivery rather than the control frame. The bus still runs at 400 kHz
+and 1 bit.
 
 ## Validation
 
 - All 34 M7 Python unit tests pass.
 - Shell, Python syntax and `git diff --check` pass.
 - The Probe 90 kernel and DTB build passed without warnings.
-- The Probe 91 DTB compiles, and `checkpatch --strict` reports no errors, warnings
-  or checks for its source diff.
-- Probe 91 reuses the byte-identical Probe 90 kernel payload and the confirmed
+- The Probe 91, 92 and 93 DTBs compile, and `checkpatch --strict` reports no
+  errors, warnings or checks for their source diffs.
+- All three probes reuse the byte-identical kernel payload and the confirmed
   firmware and p6 NVRAM contents.
 - Hardware validation uses the guarded `boot`-only flash path on HBOOT 1.61.
-- Probe 90 reached the ACM shell, returned `OKAY` from flash and reboot, and
-  produced complete dmesg blocks.
-- The corrected capture and the read-only diagnostic run each produced a complete
-  live host probe with a responsive shell. Both report `M7_WLAN_PRESENT=no`, so
-  WLAN validation remains open.
-- Probe 91 has not run on hardware because no Fastboot device is visible.
+- Probes 91 and 92 reached the ACM shell, returned `OKAY` from flash and reboot,
+  and produced complete dmesg blocks. Both report `M7_WLAN_PRESENT=no`.
+- Probe 93 returned `OKAY` from flash and reboot. A later complete live probe and
+  dmesg capture report `M7_WLAN_PRESENT=yes`. The early capture before brcmfmac
+  completion is not used as validation.
 
 ## Next steps
 
-1. Transition the M7 physically to FASTBOOT, check the lease and verify the
+1. Build Probe 94 with only `max-frequency = <1000000>` changed from Probe 93.
+2. Transition the M7 physically to FASTBOOT, check the lease and verify the
    `m7_ul` product guard.
-2. Boot Probe 91 through `phone-lease` and capture a complete live probe.
-3. Require `oob_irq_seen`, a nonzero brcmfmac interrupt count, `SEPINT=0x07` and
-   `M7_WLAN_PRESENT=yes` before removing instrumentation or raising the SDIO clock.
-4. If Probe 91 still times out, remove only the PM8921 GPIO 38 pull-down and
-   repeat the same capture.
-5. Raise the SDIO clock, then test 4-bit and high-speed operation only after
-   `wlan0` appears.
-6. Add network userspace tools, then verify an actual association.
-7. Continue with display, audio, Bluetooth and modem as separate milestones.
+3. Flash only `boot`, then require a complete live probe and dmesg capture with
+   `M7_WLAN_PRESENT=yes` before keeping the higher clock.
+4. Test 10 MHz and 25 MHz separately if 1 MHz passes. Revert to 400 kHz on a
+   transfer or command timeout.
+5. Test 4-bit mode, then high-speed mode as separate changes after the clock is
+   stable.
+6. Add network userspace tools and verify an actual association.
+7. Investigate OOB routing and MMCI SDIO IRQ support after the stable polling
+   path is recorded.
+8. Continue with display, audio, Bluetooth and modem as separate milestones.
 
 See also:
 

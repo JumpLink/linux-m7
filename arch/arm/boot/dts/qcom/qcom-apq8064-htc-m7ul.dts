@@ -361,9 +361,7 @@
 	wifi@1 {
 		compatible = "brcm,bcm4335-fmac", "brcm,bcm4329-fmac";
 		reg = <1>;
-		/* bcmdhd keeps OOB asserted until the host clears F2 status. */
-		interrupts-extended = <&pm8921_gpio 38 IRQ_TYPE_LEVEL_HIGH>;
-		interrupt-names = "host-wake";
+		/* OOB is not delivered on this board; poll SDIO interrupts in MMC. */
 	};
 };
 

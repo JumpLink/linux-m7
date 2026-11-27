@@ -25,22 +25,24 @@ The imported basis is Linux 7.1.0 at upstream commit
   PM8921 LDO 15
 - volume keys, reboot-mode handling and a 1 MiB Pstore/Ramoops region
 
-WLAN has a bootable checkpoint: SDCC3 recognizes the BCM4335 and enables
-Function 1 at 400 kHz. A first-boot watchdog pet keeps the phone from resetting
-after about 25 s. Firmware and the confirmed partition-6 NVRAM pass a complete
-read-back check. Probe 90 releases the CR4 reset and sends the first control frame,
-but receives no response within 2.568 s. The device mailbox contains
-`tohostmailbox=4`, while the host has no receive event and no brcmfmac interrupt.
-A complete live `M7_HOST_PROBE` confirms that `wlan0` is absent.
+WLAN reaches `wlan0` on SDCC3. The bus still runs at 400 kHz and 1 bit.
+Firmware and the confirmed partition-6 NVRAM pass the read-back check, CR4 starts,
+and the MMC core delivers control responses through SDIO interrupt polling. A
+complete live `M7_HOST_PROBE` from Probe 93 reports `M7_WLAN_PRESENT=yes`; the
+interface is down until userspace brings it up.
 
-Read-only diagnostics show that the WLAN pin is PM8921 GPIO 38, not APQ TLMM GPIO
-38. Its S4 voltage source is correct, but it retains a pull-down. Downstream
-requests the host-wake IRQ as active-high level, while the M7 DTS requested a
-falling edge. Commit `74bb395f0` changes only that IRQ type. Probe 91 is built with
-the same kernel, firmware and NVRAM as Probe 90, but it has not run on hardware
-because no Fastboot device is visible. Display, audio, Bluetooth, modem and
-cameras remain separate milestones. The camera has no mainline APQ8064 driver and
-is a separate long-term project.
+Probes 91 and 92 isolated the old failure to OOB delivery. Active-high selection
+reached the chip as `SEPINT=0x07`, and removing the GPIO 38 pull did not help.
+Both runs left response data in the device mailbox without an OOB interrupt.
+Probe 93 removed only the OOB interrupt entry. The QCOM MMCI variant does not
+advertise `MMC_CAP_SDIO_IRQ`, so the MMC core polls `SDIO_CCCR_INTx` and calls
+the registered SDIO function handler. That path consumes the responses and
+finishes brcmfmac initialization.
+
+The next single-variable test raises the SDCC3 clock to 1 MHz. Association is not
+tested yet. Display, audio, Bluetooth, modem and cameras remain separate
+milestones. The camera has no mainline APQ8064 driver and is a separate long-term
+project.
 
 The full history, current result and upstream candidates are recorded in
 `docs/m7-worklog.md`, `docs/m7-upstream-candidates.md` and

@@ -158,20 +158,23 @@ Files:
 Candidate: submit the board in stages as subsystems become stable.
 
 Current evidence: eMMC, USB ACM, Pstore, automatic Recovery and Synaptics
-S3202 touchscreen work. BCM4335 SDIO enumerates, enables Function 1 and completes
-the firmware and confirmed partition-6 NVRAM download. Mainline writes the CR4
-reset vector and sends the first control frame, but Probe 90 times out before
-`wlan0` becomes operational. The device mailbox contains response-side data while
-the host sees no receive event. Live diagnostics show a mismatch between
-Downstream's active-high host-wake request and the M7 DTS falling-edge request.
-Probe 91 changes only the IRQ type and awaits a hardware boot.
+S3202 touchscreen work. BCM4335 SDIO enumerates, enables Function 1, completes the
+firmware and confirmed partition-6 NVRAM download, starts CR4 and creates
+`wlan0`. Probe 93 uses MMC SDIO interrupt polling and reports
+`M7_WLAN_PRESENT=yes` at 400 kHz and 1 bit. Association is not tested.
+
+Probes 91 and 92 show that the OOB path still fails with Downstream's active-high
+selection and no PM8921 GPIO 38 pull. Probe 93 removes only the OOB entry and
+succeeds. The QCOM MMCI variant does not advertise `MMC_CAP_SDIO_IRQ`, so the MMC
+core polls `SDIO_CCCR_INTx`.
 
 Open risks:
 
-- Prove the active-high OOB correction on hardware before treating it as a fix.
-- If it fails, test the remaining PM8921 GPIO 38 pull-down mismatch separately.
+- Fix or explain the OOB route before relying on it. Polling works but adds CPU
+  and SDIO-bus traffic.
 - Confirm that the confirmed partition-6 NVRAM range is valid across M7 units
   before generalizing the board support.
+- Test higher SDIO clocks, 4-bit mode, high-speed mode and association.
 - Display, audio, Bluetooth, modem and cameras are not enabled.
 - The defconfig is intentionally headless and not a daily-driver
   configuration.

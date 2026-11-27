@@ -17,6 +17,7 @@
 #include <linux/mmc/sdio_func.h>
 #include <linux/mmc/card.h>
 #include <linux/mmc/core.h>
+#include <linux/mmc/host.h>
 #include <linux/semaphore.h>
 #include <linux/firmware.h>
 #include <linux/module.h>
@@ -1725,6 +1726,80 @@ static u8 brcmf_sdio_rxglom(struct brcmf_sdio *bus, u8 rxseq)
 	return num;
 }
 
+/* Temporary M7 WLAN diagnostics: preserve the timeout state before recovery. */
+static void brcmf_sdio_ctrl_timeout_snapshot(struct brcmf_sdio *bus)
+{
+	struct brcmf_sdio_dev *sdiodev = bus->sdiodev;
+	struct mmc_host *host = sdiodev->func1->card->host;
+	u32 intstatus, hostintmask, intmask, funcintmask;
+	u32 tosbmailbox, tohostmailbox, tohostmailboxdata;
+	u32 corebase = bus->sdio_core->base;
+	u8 intx, ien, sepint, framectrl, clkcsr, hi, lo, devctl;
+	bool oob_line = false;
+	int oob_irq = -ENODEV, oob_err = -ENODEV;
+	int err_int, err_hm, err_im, err_fim, err_tosb, err_tohost;
+	int err_tohostdata, err_fc, err_clk, err_hi, err_lo, err_dev;
+	int err_intx, err_ien, err_sep;
+
+	pr_info("M7_WLAN_TRACE: ctrl_timeout_state rxlen=%u ctrl_stat=%d ctrl_len=%u ipend=%d pending_int=%x dpc=%d poll=%d tick=%u rate=%u intr=%d clk=%d hm=%08x irq_en=%d oob=%d intrcount=%u pollcnt=%u regfails=%u f1=%u f2rxh=%u f2rxd=%u f2tx=%u\n",
+		bus->rxlen, bus->ctrl_frame_stat, bus->ctrl_frame_len,
+		atomic_read(&bus->ipend), atomic_read(&bus->intstatus),
+		bus->dpc_triggered, bus->poll, bus->polltick, bus->pollrate,
+		bus->intr, bus->clkstate, bus->hostintmask, sdiodev->irq_en,
+		sdiodev->oob_irq_requested, bus->sdcnt.intrcount,
+		bus->sdcnt.pollcnt, bus->sdcnt.regfails, bus->sdcnt.f1regdata,
+		bus->sdcnt.f2rxhdrs, bus->sdcnt.f2rxdata, bus->sdcnt.f2txdata);
+	pr_info("M7_WLAN_TRACE: ctrl_timeout_host clock=%u bus_width=%u timing=%u voltage=%u caps=%08x\n",
+		host->actual_clock, host->ios.bus_width, host->ios.timing,
+		host->ios.signal_voltage, host->caps);
+
+	if (sdiodev->oob_irq_requested) {
+		oob_irq = sdiodev->settings->bus.sdio.oob_irq_nr;
+		oob_err = irq_get_irqchip_state(oob_irq, IRQCHIP_STATE_LINE_LEVEL,
+						&oob_line);
+	}
+
+	sdio_claim_host(sdiodev->func1);
+	if (host->ops && host->ops->sdio_debug_snapshot)
+		host->ops->sdio_debug_snapshot(host);
+
+	intx = brcmf_sdiod_func0_rb(sdiodev, SDIO_CCCR_INTx, &err_intx);
+	ien = brcmf_sdiod_func0_rb(sdiodev, SDIO_CCCR_IENx, &err_ien);
+	sepint = brcmf_sdiod_func0_rb(sdiodev, SDIO_CCCR_BRCM_SEPINT,
+				      &err_sep);
+	intstatus = brcmf_sdiod_readl(sdiodev, corebase + SD_REG(intstatus),
+				      &err_int);
+	hostintmask = brcmf_sdiod_readl(sdiodev, corebase + SD_REG(hostintmask),
+					&err_hm);
+	intmask = brcmf_sdiod_readl(sdiodev, corebase + SD_REG(intmask), &err_im);
+	funcintmask = brcmf_sdiod_readl(sdiodev, corebase + SD_REG(funcintmask),
+					&err_fim);
+	tosbmailbox = brcmf_sdiod_readl(sdiodev, corebase + SD_REG(tosbmailbox),
+					&err_tosb);
+	tohostmailbox = brcmf_sdiod_readl(sdiodev, corebase + SD_REG(tohostmailbox),
+					  &err_tohost);
+	tohostmailboxdata = brcmf_sdiod_readl(sdiodev,
+					      corebase + SD_REG(tohostmailboxdata),
+					      &err_tohostdata);
+	framectrl = brcmf_sdiod_readb(sdiodev, SBSDIO_FUNC1_FRAMECTRL,
+				      &err_fc);
+	clkcsr = brcmf_sdiod_readb(sdiodev, SBSDIO_FUNC1_CHIPCLKCSR,
+				   &err_clk);
+	hi = brcmf_sdiod_readb(sdiodev, SBSDIO_FUNC1_RFRAMEBCHI, &err_hi);
+	lo = brcmf_sdiod_readb(sdiodev, SBSDIO_FUNC1_RFRAMEBCLO, &err_lo);
+	devctl = brcmf_sdiod_readb(sdiodev, SBSDIO_DEVICE_CTL, &err_dev);
+	sdio_release_host(sdiodev->func1);
+
+	pr_info("M7_WLAN_TRACE: ctrl_timeout_sdio intx=%02x(%d) ien=%02x(%d) sepint=%02x(%d) intstatus=%08x(%d) hostintmask=%08x(%d) intmask=%08x(%d) funcintmask=%08x(%d) framectrl=%02x(%d) clkcsr=%02x(%d) rframebc=%04x(%d/%d) devctl=%02x(%d)\n",
+		intx, err_intx, ien, err_ien, sepint, err_sep, intstatus,
+		err_int, hostintmask, err_hm, intmask, err_im, funcintmask,
+		err_fim, framectrl, err_fc, clkcsr, err_clk,
+		((u16)hi << 8) | lo, err_hi, err_lo, devctl, err_dev);
+	pr_info("M7_WLAN_TRACE: ctrl_timeout_mail tosb=%08x(%d) tohost=%08x(%d) tohostdata=%08x(%d) oob_irq=%d oob_line=%d oob_err=%d\n",
+		tosbmailbox, err_tosb, tohostmailbox, err_tohost,
+		tohostmailboxdata, err_tohostdata, oob_irq, oob_line, oob_err);
+}
+
 static int brcmf_sdio_dcmd_resp_wait(struct brcmf_sdio *bus, uint *condition,
 				     bool *pending)
 {
@@ -1747,6 +1822,8 @@ static int brcmf_sdio_dcmd_resp_wait(struct brcmf_sdio *bus, uint *condition,
 	remove_wait_queue(&bus->dcmd_resp_wait, &wait);
 	pr_info("M7_WLAN_TRACE: ctrl_wait_done condition=%u timeout=%d pending=%d\n",
 		*condition, timeout, *pending);
+	if (!*condition && !*pending && !timeout)
+		brcmf_sdio_ctrl_timeout_snapshot(bus);
 
 	return timeout;
 }

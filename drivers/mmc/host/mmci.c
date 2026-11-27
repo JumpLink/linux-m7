@@ -2095,6 +2095,38 @@ static void mmci_ack_sdio_irq(struct mmc_host *mmc)
 	spin_unlock_irqrestore(&host->lock, flags);
 }
 
+/* Temporary M7 WLAN diagnostics: sample without changing controller state. */
+static void mmci_sdio_debug_snapshot(struct mmc_host *mmc)
+{
+	struct mmci_host *host = mmc_priv(mmc);
+	unsigned long flags;
+	u32 power, clock, command, datactrl, datacnt, status;
+	u32 mask0, mask1, fifocnt, size, mask1_reg, irq_action;
+
+	if (!host->variant->qcom_dml)
+		return;
+
+	spin_lock_irqsave(&host->lock, flags);
+	power = readl(host->base + MMCIPOWER);
+	clock = readl(host->base + MMCICLOCK);
+	command = readl(host->base + MMCICOMMAND);
+	datactrl = readl(host->base + MMCIDATACTRL);
+	datacnt = readl(host->base + MMCIDATACNT);
+	status = readl(host->base + MMCISTATUS);
+	mask0 = readl(host->base + MMCIMASK0);
+	mask1 = readl(host->base + MMCIMASK1);
+	fifocnt = readl(host->base + MMCIFIFOCNT);
+	size = host->size;
+	mask1_reg = host->mask1_reg;
+	irq_action = host->irq_action;
+	spin_unlock_irqrestore(&host->lock, flags);
+
+	pr_info("M7_WLAN_TRACE: mmci cclk=%u actual=%u power=%02x clock=%08x command=%08x datactrl=%08x datacnt=%u size=%u status=%08x mask0=%08x mask1=%08x fifocnt=%u singleirq=%u dma=%u mask1_reg=%08x irq_action=%x\n",
+		host->cclk, mmc->actual_clock, power, clock, command, datactrl,
+		datacnt, size, status, mask0, mask1, fifocnt, host->singleirq,
+		host->use_dma, mask1_reg, irq_action);
+}
+
 static struct mmc_host_ops mmci_ops = {
 	.request	= mmci_request,
 	.pre_req	= mmci_pre_request,
@@ -2103,6 +2135,7 @@ static struct mmc_host_ops mmci_ops = {
 	.get_ro		= mmc_gpio_get_ro,
 	.get_cd		= mmci_get_cd,
 	.start_signal_voltage_switch = mmci_sig_volt_switch,
+	.sdio_debug_snapshot = mmci_sdio_debug_snapshot,
 };
 
 static void mmci_probe_level_translator(struct mmc_host *mmc)

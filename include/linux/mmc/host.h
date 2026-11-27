@@ -213,6 +213,9 @@ struct mmc_host_ops {
 	/* Mandatory callback when using MMC_CAP2_SDIO_IRQ_NOTHREAD. */
 	void	(*ack_sdio_irq)(struct mmc_host *host);
 
+	/* Temporary M7 WLAN timeout diagnostics; remove after root-cause isolation. */
+	void	(*sdio_debug_snapshot)(struct mmc_host *host);
+
 	/* optional callback for HC quirks */
 	void	(*init_card)(struct mmc_host *host, struct mmc_card *card);
 

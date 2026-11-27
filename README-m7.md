@@ -31,8 +31,11 @@ after about 25 s. Firmware and NVRAM writes pass a complete read-back check.
 Probe 89 uses the confirmed raw NVRAM range from partition 6. It completes the
 download, releases the CR4 reset and sends the first control frame, but receives
 no response within 2.568 s. No OOB interrupt was observed. `wlan0` is not created
-yet. Display, audio, Bluetooth, modem and cameras remain separate milestones.
-The camera has no mainline APQ8064 driver and is a separate long-term project.
+yet. Probe 90 adds a timeout snapshot of the F1 interrupt, mailbox and frame
+state, the OOB GPIO line and raw SDCC3 registers. That build still needs a
+hardware run. Display, audio, Bluetooth, modem and cameras remain separate
+milestones. The camera has no mainline APQ8064 driver and is a separate long-term
+project.
 
 The full history, current result and upstream candidates are recorded in
 `docs/m7-worklog.md`, `docs/m7-upstream-candidates.md` and

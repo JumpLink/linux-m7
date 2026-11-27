@@ -353,6 +353,19 @@ petter kept the device stable for 75 s, but `wlan0` still did not appear and
 the log stopped after the firmware request. Probe 88 adds targeted callback,
 clock and first-transfer markers to locate that earlier stall.
 
+Probe 88 showed that the request and clock path are healthy. The callback
+received the 588277-byte stock firmware and a 2220-byte prepared NVRAM block.
+All 17 32 KiB firmware writes, the final 31221-byte write, the 2220-byte NVRAM
+write and the 4-byte reset-vector write completed. Unlike the generic NVRAM
+runs, no `dongle is not responding` error appeared during the following
+60 s. `wlan0` still did not appear, so the remaining problem is after the
+reset vector but before the cfg80211 device is registered.
+
+The p14 extractor still needs refinement. Its 150 lines include adjacent
+radio-partition strings, partial keys and duplicate `ccode` entries. The next
+step is to isolate the exact WLAN text block or filter it against the
+downstream NVRAM key set before drawing a conclusion from probe 88.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves

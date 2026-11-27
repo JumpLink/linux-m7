@@ -26,11 +26,13 @@ The imported basis is Linux 7.1.0 at upstream commit
 - volume keys, reboot-mode handling and a 1 MiB Pstore/Ramoops region
 
 WLAN has a bootable checkpoint: SDCC3 recognizes the BCM4335 and enables
-Function 1 at 400 kHz. With an NVRAM file supplied, brcmfmac completes the
-firmware and NVRAM download and writes the CR4 reset vector. Both the generic
-LibreELEC firmware and HTC's stock `fw_bcm4335_b0.bin` then leave the dongle
-unresponsive with `err=-110`; `wlan0` is not created yet. Display, audio,
-Bluetooth, modem and cameras remain separate milestones.
+Function 1 at 400 kHz. A first-boot watchdog pet keeps the phone from resetting
+after about 25 s. Firmware and NVRAM writes pass a complete read-back check.
+The generic LibreELEC NVRAM still ends in `err=-110`; a device-local M7 NVRAM
+candidate completes the reset-vector path without that error, but `wlan0` is
+not created yet. The candidate needs a cleaner extraction from the radio
+partition. Display, audio, Bluetooth, modem and cameras remain separate
+milestones.
 The camera has no mainline APQ8064 driver and is a separate long-term project.
 
 The full history, current result and upstream candidates are recorded in

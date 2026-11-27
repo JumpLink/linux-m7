@@ -635,6 +635,47 @@ returns to 400 kHz. Probe 97 will keep 450 kHz and add temporary MMCI command an
 data error logs to distinguish command CRC, data CRC and timeout paths. The
 instrumentation will be removed after the trace is captured.
 
+### 2026-11-27: Probe 97 identifies 16 MHz clock rounding
+
+Probe 97 keeps 450 kHz in the DTS and adds temporary MMCI command, data and IOS
+error logs. Firmware, p6 NVRAM and extracted initramfs contents remain identical
+to Probe 93. Its `boot.img` SHA-256 is
+`168a5b3aa2480f82c368f5f1a2e0e479c78bac9bb174d95e89ec7a72843fd7ea`.
+
+Run `20261127T180408Z` verified `product: m7_ul`, flashed only `boot` through the
+lease, and rebooted. The complete late probe at 75.00 s reports
+`M7_WLAN_PRESENT=no`. SDCC3 first enumerates at 400 kHz. When the MMC core raises
+the clock to the requested 450 kHz, the trace reports
+`M7DBG ios clock=450000 actual=16000000 mclk=16000000`. The next CMD52 to F1
+fails with `status=0x00000001`, the command CRC bit, and Functions 1, 2 and 3
+return `-84`.
+
+The MSM8960 SDC table has 400 kHz and 16 MHz but no entry between them.
+`qcom_find_freq()` selects the first entry at or above the request, so Probes 94,
+95 and 96 all ran at 16 MHz. They did not measure 1 MHz, 500 kHz or 450 kHz.
+
+### 2026-11-27: Probe 98 reaches WLAN at 450 kHz
+
+Commit `4eb6d13b9` adds exact 450 kHz, 500 kHz and 1 MHz entries to the shared
+MSM8960 SDC clock table. A new source-table regression test checks selection,
+rate arithmetic, ordering and counter widths. Probe 98 changes only the DTS to
+450 kHz and keeps the temporary MMCI instrumentation. Its `boot.img` SHA-256 is
+`e7517e7db83097886729aba1b00834174fa58d40c347157b1a3a9fabbc2cef04`.
+
+Run `20261127T181819Z` verified `product: m7_ul`, flashed only `boot` through the
+lease, and rebooted. The early probe at 2.37 s is not validation because firmware
+download is still running. The trace confirms
+`clock=450000 actual=450000 mclk=450000`, then completes firmware at 18.508 s,
+p6 NVRAM at 18.532 s, CR4 activation and all control exchanges. A complete late
+live probe at 52.74 s reports `M7_WLAN_PRESENT=yes` and `M7_WLAN_STATE=down`.
+The complete dmesg block has no command CRC or data error. One CMD52 timeout
+appears at 19.812 s after `attach_done`, during SDIO interrupt polling, without
+preventing initialization.
+
+The early `-84` failures were a clock-table rounding bug, not a BCM4335 limit at
+450 kHz. The command and data debug logs are removed. The IOS clock log remains
+temporarily for the 500 kHz and 1 MHz steps.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
@@ -644,12 +685,13 @@ and CR4 startup work. Probe 93 completes brcmfmac initialization over MMC SDIO
 interrupt polling and a complete live `M7_HOST_PROBE` reports
 `M7_WLAN_PRESENT=yes`. The interface remains down. Active-high OOB and no-pull
 tests both failed before polling succeeded, so the remaining OOB fault is in
-signal delivery rather than the control frame. The bus still runs at 400 kHz
-and 1 bit.
+signal delivery rather than the control frame. The bus now runs at 450 kHz
+and 1 bit. Probe 98 proves the actual clock and completes a live WLAN probe at
+that rate.
 
 ## Validation
 
-- All 34 M7 Python unit tests pass.
+- All 36 M7 Python unit tests pass, including the SDC clock-table regression.
 - Shell, Python syntax and `git diff --check` pass.
 - The Probe 90 kernel and DTB build passed without warnings.
 - The Probe 91, 92 and 93 DTBs compile, and `checkpatch --strict` reports no
@@ -668,16 +710,21 @@ and 1 bit.
   dmesg capture report `M7_WLAN_PRESENT=no` and the same early `-84` failure.
 - Probe 96 returned `OKAY` from flash and reboot. Its complete late probe and
   dmesg capture report `M7_WLAN_PRESENT=no` and the same early `-84` failure.
+- Probe 97 returned `OKAY` from flash and reboot. Its complete late probe and
+  dmesg capture show that the requested 450 kHz became 16 MHz and CMD52 failed
+  with command CRC.
+- Probe 98 returned `OKAY` from flash and reboot. Its complete late probe and
+  dmesg capture confirm an actual 450 kHz clock and `M7_WLAN_PRESENT=yes`.
 
 ## Next steps
 
-1. Build Probe 97 at 450 kHz with temporary MMCI command and data error logs.
+1. Build Probe 99 at 500 kHz with the temporary IOS clock log.
 2. Transition the M7 physically to FASTBOOT, check the lease and verify the
    `m7_ul` product guard.
 3. Flash only `boot`, then require a complete live probe and dmesg capture with
-   `M7_WLAN_PRESENT=yes` before keeping the higher clock.
-4. Use MMCI error instrumentation to identify the early failure, then resume
-   clock steps from the proven 400 kHz baseline.
+   `M7_WLAN_PRESENT=yes` before keeping 500 kHz.
+4. Repeat at 1 MHz, then remove all temporary MMCI instrumentation and rebuild
+   the clean image at the highest proven clock.
 5. Test 4-bit mode, then high-speed mode as separate changes after the clock is
    stable.
 6. Add network userspace tools and verify an actual association.

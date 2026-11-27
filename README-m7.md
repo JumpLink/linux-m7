@@ -25,11 +25,11 @@ The imported basis is Linux 7.1.0 at upstream commit
   PM8921 LDO 15
 - volume keys, reboot-mode handling and a 1 MiB Pstore/Ramoops region
 
-WLAN reaches `wlan0` on SDCC3. The bus still runs at 400 kHz and 1 bit.
-Firmware and the confirmed partition-6 NVRAM pass the read-back check, CR4 starts,
-and the MMC core delivers control responses through SDIO interrupt polling. A
-complete live `M7_HOST_PROBE` from Probe 93 reports `M7_WLAN_PRESENT=yes`; the
-interface is down until userspace brings it up.
+WLAN reaches `wlan0` on SDCC3 at 450 kHz and 1 bit. Firmware and the confirmed
+partition-6 NVRAM pass the read-back check, CR4 starts, and the MMC core delivers
+control responses through SDIO interrupt polling. A complete live `M7_HOST_PROBE`
+from Probe 98 reports `M7_WLAN_PRESENT=yes`; the interface is down until
+userspace brings it up.
 
 Probes 91 and 92 isolated the old failure to OOB delivery. Active-high selection
 reached the chip as `SEPINT=0x07`, and removing the GPIO 38 pull did not help.
@@ -39,12 +39,15 @@ advertise `MMC_CAP_SDIO_IRQ`, so the MMC core polls `SDIO_CCCR_INTx` and calls
 the registered SDIO function handler. That path consumes the responses and
 finishes brcmfmac initialization.
 
-The 450 kHz, 500 kHz and 1 MHz SDCC3 tests all failed before firmware download
-with `-84` (`EILSEQ`), so the stable clock remains 400 kHz. The next test adds
-temporary MMCI error instrumentation at 450 kHz to identify the failing command
-or data status. Association is not tested yet. Display, audio, Bluetooth, modem
-and cameras remain separate milestones. The camera has no mainline APQ8064
-driver and is a separate long-term project.
+Probes 94 to 96 did not reach their requested clocks. The MSM8960 SDC RCG rounded
+450 kHz, 500 kHz and 1 MHz up to 16 MHz, where CMD52 failed with a command CRC
+error and brcmfmac returned `-84` before firmware download. Probe 97 recorded the
+actual rate and status. Commit `4eb6d13b9` adds exact low-rate entries to the SDC
+clock table. Probe 98 then reports `clock=450000 actual=450000 mclk=450000` and
+completes firmware, NVRAM, CR4 and control initialization. The next clock steps
+are 500 kHz and 1 MHz. Association is not tested yet. Display, audio, Bluetooth,
+modem and cameras remain separate milestones. The camera has no mainline
+APQ8064 driver and is a separate long-term project.
 
 The full history, current result and upstream candidates are recorded in
 `docs/m7-worklog.md`, `docs/m7-upstream-candidates.md` and
@@ -58,7 +61,7 @@ cross-compiler package is `gcc-arm-linux-gnu` (prefix `arm-linux-gnu-`).
 
 ```sh
 BUSYBOX=/path/to/busybox-armhf ./tools/m7/build.sh
-python3 -m unittest -v tools/m7/test_parse_pstore.py tools/m7/test_patch_zimage_early_reboot.py
+python3 -m unittest discover -v -s tools/m7 -p 'test_*.py'
 ```
 
 Artifacts are written to `build/m7/`:

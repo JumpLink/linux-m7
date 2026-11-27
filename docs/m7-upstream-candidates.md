@@ -54,9 +54,9 @@ Open risks:
 - The current checkpoint changes the global QCOM variant. Scope the final
   change to SDCC3 or add a DT property before upstream submission.
 - Test other QCOM SDCC/MMC boards and eMMC at all supported speeds.
-- Probe 98 reaches full WLAN initialization at an actual 450 kHz. Test higher
-  rates after correcting the SDC clock table before calling 400 kHz a module
-  limit.
+- Probes 98 and 100 reach full WLAN initialization at actual 450 kHz and
+  500 kHz. Test 1 MHz after correcting the SDC clock table before calling
+  400 kHz a module limit.
 
 ## 3. SDIO low-speed byte mode
 
@@ -161,8 +161,8 @@ Candidate: submit the board in stages as subsystems become stable.
 Current evidence: eMMC, USB ACM, Pstore, automatic Recovery and Synaptics
 S3202 touchscreen work. BCM4335 SDIO enumerates, enables Function 1, completes the
 firmware and confirmed partition-6 NVRAM download, starts CR4 and creates
-`wlan0`. Probe 98 uses MMC SDIO interrupt polling and reports
-`M7_WLAN_PRESENT=yes` at an actual 450 kHz and 1 bit. Association is not tested.
+`wlan0`. Probe 100 uses MMC SDIO interrupt polling and reports
+`M7_WLAN_PRESENT=yes` at an actual 500 kHz and 1 bit. Association is not tested.
 
 Probes 91 and 92 show that the OOB path still fails with Downstream's active-high
 selection and no PM8921 GPIO 38 pull. Probe 93 removes only the OOB entry and
@@ -176,9 +176,9 @@ Open risks:
 - Confirm that the confirmed partition-6 NVRAM range is valid across M7 units
   before generalizing the board support.
 - Probes 94 to 96 all ran at 16 MHz because the SDC table rounded their requested
-  rates upward. Probe 97 captured the command CRC failure. Probe 98 proves full
-  WLAN initialization at an actual 450 kHz after the table fix.
-- Test 500 kHz and 1 MHz, then 4-bit mode, high-speed mode and association.
+  rates upward. Probe 97 captured the command CRC failure. Probes 98 and 100 prove
+  full WLAN initialization at actual 450 kHz and 500 kHz after the table fix.
+- Test 1 MHz, then 4-bit mode, high-speed mode and association.
 - Display, audio, Bluetooth, modem and cameras are not enabled.
 - The defconfig is intentionally headless and not a daily-driver
   configuration.
@@ -196,8 +196,9 @@ PXO and the existing M/N counters.
 Evidence: `qcom_find_freq()` selects the first table entry at or above the
 requested rate. The old table jumped from 400 kHz to 16 MHz. Probe 97 recorded
 `clock=450000 actual=16000000 mclk=16000000`, followed by a CMD52 command CRC
-failure and `-84` from all BCM4335 SDIO functions. Probe 98 recorded an actual
-450 kHz clock and completed firmware, NVRAM, CR4 and control initialization.
+failure and `-84` from all BCM4335 SDIO functions. Probes 98 and 100 recorded
+actual 450 kHz and 500 kHz clocks and completed firmware, NVRAM, CR4 and control
+initialization. Probe 100's complete dmesg has no SDCC3 error.
 
 Open risks:
 

@@ -25,10 +25,10 @@ The imported basis is Linux 7.1.0 at upstream commit
   PM8921 LDO 15
 - volume keys, reboot-mode handling and a 1 MiB Pstore/Ramoops region
 
-WLAN reaches `wlan0` on SDCC3 at 450 kHz and 1 bit. Firmware and the confirmed
+WLAN reaches `wlan0` on SDCC3 at 500 kHz and 1 bit. Firmware and the confirmed
 partition-6 NVRAM pass the read-back check, CR4 starts, and the MMC core delivers
 control responses through SDIO interrupt polling. A complete live `M7_HOST_PROBE`
-from Probe 98 reports `M7_WLAN_PRESENT=yes`; the interface is down until
+from Probe 100 reports `M7_WLAN_PRESENT=yes`; the interface is down until
 userspace brings it up.
 
 Probes 91 and 92 isolated the old failure to OOB delivery. Active-high selection
@@ -43,11 +43,12 @@ Probes 94 to 96 did not reach their requested clocks. The MSM8960 SDC RCG rounde
 450 kHz, 500 kHz and 1 MHz up to 16 MHz, where CMD52 failed with a command CRC
 error and brcmfmac returned `-84` before firmware download. Probe 97 recorded the
 actual rate and status. Commit `4eb6d13b9` adds exact low-rate entries to the SDC
-clock table. Probe 98 then reports `clock=450000 actual=450000 mclk=450000` and
-completes firmware, NVRAM, CR4 and control initialization. The next clock steps
-are 500 kHz and 1 MHz. Association is not tested yet. Display, audio, Bluetooth,
-modem and cameras remain separate milestones. The camera has no mainline
-APQ8064 driver and is a separate long-term project.
+clock table. Probes 98 and 100 report actual 450 kHz and 500 kHz clocks and
+complete firmware, NVRAM, CR4 and control initialization. Probe 100's complete
+dmesg has no SDCC3 command, data or timeout error. The next clock step is 1 MHz.
+Association is not tested yet. Display, audio, Bluetooth, modem and cameras
+remain separate milestones. The camera has no mainline APQ8064 driver and is a
+separate long-term project.
 
 The full history, current result and upstream candidates are recorded in
 `docs/m7-worklog.md`, `docs/m7-upstream-candidates.md` and

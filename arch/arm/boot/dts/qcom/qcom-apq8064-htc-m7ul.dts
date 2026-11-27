@@ -354,7 +354,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&wlan_sdcc3_pins>;
 	bus-width = <1>;
-	max-frequency = <450000>;
+	max-frequency = <500000>;
 	non-removable;
 	status = "okay";
 

@@ -676,6 +676,37 @@ The early `-84` failures were a clock-table rounding bug, not a BCM4335 limit at
 450 kHz. The command and data debug logs are removed. The IOS clock log remains
 temporarily for the 500 kHz and 1 MHz steps.
 
+### 2026-11-27: Probe 99 reaches WLAN at the requested 500 kHz setting
+
+Probe 99 changes only the DTS from 450 kHz to 500 kHz. Firmware, p6 NVRAM and
+extracted initramfs contents remain identical to Probe 93. Its `boot.img` SHA-256
+is `f9556b4374f11e5beed7203b53cc5a5b91c95a0c4d8f4c688b42d4dd31857bdc`.
+
+Run `20261127T183711Z` verified `product: m7_ul`, flashed only `boot` through the
+lease, and rebooted. Firmware completes at 16.906 s, p6 NVRAM at 16.928 s and
+brcmfmac attachment at 18.243 s without `-84`. The complete late probe at
+153.25 s reports `M7_WLAN_PRESENT=yes` and `M7_WLAN_STATE=down`.
+
+The temporary IOS log still checked MMC index 0. SDCC3 is `mmc1` in this run, so
+the trace contains no SDCC3 clock line. This run proves initialization but does
+not prove the actual 500 kHz rate. Probe 100 corrects the temporary filter and
+repeats the same rate.
+
+### 2026-11-27: Probe 100 validates an actual 500 kHz clock
+
+Probe 100 changes only the temporary IOS log filter from MMC index 0 to physical
+address `0x12180000`. The DTS stays at 500 kHz, and firmware, p6 NVRAM and
+extracted initramfs contents remain unchanged. Its `boot.img` SHA-256 is
+`f1d942e88c1149ea19a97aa4f58e3d281d4bb3bc703be897e67db47fc7899494`.
+
+Run `20261127T184621Z` verified `product: m7_ul`, flashed only `boot` through the
+lease, and rebooted. SDCC3 first enumerates at 400 kHz, then reports
+`clock=500000 actual=500000 mclk=500000 width=0 timing=0`. Firmware completes at
+16.870 s, p6 NVRAM at 16.892 s, CR4 starts and `attach_done` follows at 18.053 s.
+The complete late probe at 49.23 s reports `M7_WLAN_PRESENT=yes` and
+`M7_WLAN_STATE=down`. The single complete dmesg block has 735 lines and contains
+no SDCC3 command, data or timeout error.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
@@ -685,8 +716,8 @@ and CR4 startup work. Probe 93 completes brcmfmac initialization over MMC SDIO
 interrupt polling and a complete live `M7_HOST_PROBE` reports
 `M7_WLAN_PRESENT=yes`. The interface remains down. Active-high OOB and no-pull
 tests both failed before polling succeeded, so the remaining OOB fault is in
-signal delivery rather than the control frame. The bus now runs at 450 kHz
-and 1 bit. Probe 98 proves the actual clock and completes a live WLAN probe at
+signal delivery rather than the control frame. The bus now runs at 500 kHz
+and 1 bit. Probe 100 proves the actual clock and completes a live WLAN probe at
 that rate.
 
 ## Validation
@@ -715,16 +746,22 @@ that rate.
   with command CRC.
 - Probe 98 returned `OKAY` from flash and reboot. Its complete late probe and
   dmesg capture confirm an actual 450 kHz clock and `M7_WLAN_PRESENT=yes`.
+- Probe 99 returned `OKAY` from flash and reboot. Its complete late probe and
+  dmesg capture report `M7_WLAN_PRESENT=yes`, but the temporary IOS filter misses
+  SDCC3 as `mmc1`, so the run does not prove the actual clock.
+- Probe 100 returned `OKAY` from flash and reboot. Its complete late probe and
+  dmesg capture confirm an actual 500 kHz clock, no SDCC3 error and
+  `M7_WLAN_PRESENT=yes`.
 
 ## Next steps
 
-1. Build Probe 99 at 500 kHz with the temporary IOS clock log.
+1. Build Probe 101 at 1 MHz with the physical-address IOS clock log.
 2. Transition the M7 physically to FASTBOOT, check the lease and verify the
    `m7_ul` product guard.
-3. Flash only `boot`, then require a complete live probe and dmesg capture with
-   `M7_WLAN_PRESENT=yes` before keeping 500 kHz.
-4. Repeat at 1 MHz, then remove all temporary MMCI instrumentation and rebuild
-   the clean image at the highest proven clock.
+3. Flash only `boot`, then require an actual 1 MHz trace, a complete live probe
+   and one complete dmesg block with `M7_WLAN_PRESENT=yes`.
+4. Remove all temporary MMCI instrumentation and rebuild the clean image at the
+   highest proven clock.
 5. Test 4-bit mode, then high-speed mode as separate changes after the clock is
    stable.
 6. Add network userspace tools and verify an actual association.

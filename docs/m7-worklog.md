@@ -774,6 +774,26 @@ A read of `MMCICLOCK` returns `0x00000001`, so the controller still uses 1 bit.
 The complete dmesg block has 737 lines and no SDCC3 command, data or timeout
 error. The early `mmc1` hardware-reset error belongs to eMMC at `0x12400000`.
 
+### 2026-11-27: Optional WLAN tools build reproducibly
+
+The diagnostic image can now carry static ARMv7 `wpa_supplicant` 2.11,
+`wpa_cli` and `iw` 5.19. `tools/m7/build-wifi-tools.sh` builds them in a pinned
+Debian bookworm container from SHA-256-pinned source archives. Two consecutive
+builds produced identical binaries:
+
+- `iw`: `4a1cc0c4a91ecf162a0f142e06cf4094daffc7a7d188530cdd3f1174dfbd61cf`
+- `wpa_cli`: `9e02de817364eefe821d6d48597956f2573b3cb3018f5b207da72266e26adff9`
+- `wpa_supplicant`: `69628963f4e1039bc4699b52487784c0057b08b21921dab86407a350131abb5d`
+
+`tools/m7/wifi_tools.py` rejects missing, non-ARM, non-executable and
+dynamically linked binaries before packaging. It installs a supplied WPA
+configuration as mode-0600 `/etc/wpa_supplicant.conf`; the build manifest records
+only its presence, never its path, hash or contents. Credential-bearing builds
+are accepted only outside the checkout or under `build/`.
+
+The initramfs also exposes the BusyBox `ip`, `ifconfig`, `route`, `udhcpc`,
+`ping`, `wget` and `nc` applets. No hardware association has been attempted yet.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
@@ -781,7 +801,9 @@ Pstore across failed boots, returns automatically to TWRP and runs the
 Synaptics touchscreen. BCM4335 Function 1, firmware download, confirmed p6 NVRAM
 and CR4 startup work. Probe 93 completes brcmfmac initialization over MMC SDIO
 interrupt polling and a complete live `M7_HOST_PROBE` reports
-`M7_WLAN_PRESENT=yes`. The interface remains down. Active-high OOB and no-pull
+`M7_WLAN_PRESENT=yes`. The interface remains down. Optional static
+`wpa_supplicant`, `wpa_cli` and `iw` are packaged reproducibly, but association
+is still untested. Active-high OOB and no-pull
 tests both failed before polling succeeded, so the remaining OOB fault is in
 signal delivery rather than the control frame. The bus now runs at 1 MHz
 and 1 bit with SD high-speed timing. Probe 101 proves the actual clock, clean
@@ -792,7 +814,9 @@ proven 1-bit bus.
 
 ## Validation
 
-- All 36 M7 Python unit tests pass, including the SDC clock-table regression.
+- All 43 M7 Python unit tests pass, including the SDC clock-table and WLAN tool
+  installer regressions.
+- Two independent WLAN tool builds produced identical ARM binaries.
 - Shell, Python syntax and `git diff --check` pass.
 - The Probe 90 kernel and DTB build passed without warnings.
 - The Probe 91, 92 and 93 DTBs compile, and `checkpatch --strict` reports no
@@ -837,10 +861,10 @@ proven 1-bit bus.
 
 ## Next steps
 
-1. Add optional ARM network userspace tools to the diagnostic initramfs without
-   storing network credentials in the repository.
-2. Build a probe with the validated 1 MHz, 1-bit, high-speed DTS, scan from the
-   live shell, and verify an actual association only with the user's network.
+1. Build a probe with the validated 1 MHz, 1-bit, high-speed DTS and the optional
+   WLAN tools, then scan from the live shell.
+2. Verify an actual association and DHCP only with the user's network and
+   credentials supplied outside the repository.
 3. Investigate higher clock rates separately after userspace connectivity is
    stable.
 4. Investigate OOB routing and MMCI SDIO IRQ support after the stable polling

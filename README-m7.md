@@ -29,7 +29,8 @@ WLAN reaches `wlan0` on SDCC3 at 1 MHz and 1 bit. Firmware and the confirmed
 partition-6 NVRAM pass the read-back check, CR4 starts, and the MMC core delivers
 control responses through SDIO interrupt polling. A complete live `M7_HOST_PROBE`
 from the clean Probe 104 reports `M7_WLAN_PRESENT=yes`; the interface is down
-until userspace brings it up.
+until userspace brings it up. The diagnostic image can carry static ARM
+`wpa_supplicant`, `wpa_cli` and `iw`, but association is not tested yet.
 
 Probes 91 and 92 isolated the old failure to OOB delivery. Active-high selection
 reached the chip as `SEPINT=0x07`, and removing the GPIO 38 pull did not help.
@@ -80,10 +81,61 @@ Artifacts are written to `build/m7/`:
 | `initramfs.cpio.gz` | Minimal rootfs with a USB ACM shell |
 | `readmem` | Freestanding ARM reader for the fixed Pstore region |
 | `SHA256SUMS` | Checksums for the generated images |
+| `wifi-tools.json` | Optional WLAN tool hashes and credential-presence flag |
 
 For a split build, `SKIP_KERNEL_BUILD=1` packages existing kernel artifacts and
 `SKIP_READER_BUILD=1` reuses an already built `readmem`. This allows the kernel
 to build in a container while AOSP `mkbootimg` runs on the host.
+
+## WLAN userspace
+
+`tools/m7/build-wifi-tools.sh` builds `wpa_supplicant` 2.11, `wpa_cli` and `iw`
+5.19 as static ARMv7 binaries in a pinned Debian bookworm container. The source
+archives are checked against fixed SHA-256 values, and two consecutive builds
+produce identical binaries. The first build needs Podman and network access:
+
+```sh
+./tools/m7/build-wifi-tools.sh
+M7_WIFI_TOOLS_DIR="$PWD/build/m7/wifi-tools" \
+  BUSYBOX=/path/to/busybox-armhf ./tools/m7/build.sh
+```
+
+`wifi_tools.py` rejects missing, non-ARM, non-executable and dynamically linked
+tools before packaging. It also adds `ip`, `ifconfig`, `route`, `udhcpc`, `ping`,
+`wget` and `nc` BusyBox applets.
+
+A private test network can be embedded without putting credentials in the
+repository. The configuration must contain
+`ctrl_interface=/run/wpa_supplicant` and must live outside the checkout:
+
+```sh
+M7_WIFI_TOOLS_DIR="$PWD/build/m7/wifi-tools" \
+M7_WPA_SUPPLICANT_CONF=/tmp/m7-wpa.conf \
+  BUSYBOX=/path/to/busybox-armhf ./tools/m7/build.sh
+```
+
+The installer stores it as mode-0600 `/etc/wpa_supplicant.conf`. Its contents,
+path and hash are excluded from `build-manifest.json`; the manifest records only
+whether a configuration is present. A credential-bearing build is accepted only
+under `build/` or outside the repository. Do not publish that `boot.img` or its
+run directory.
+
+From the live shell:
+
+```sh
+mkdir -p /run/wpa_supplicant
+ip link set wlan0 up
+iw dev wlan0 scan
+wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant.conf
+wpa_cli -p /run/wpa_supplicant -i wlan0 status
+udhcpc -i wlan0 -n -q
+ip addr show wlan0
+ip route
+ping -c 3 1.1.1.1
+```
+
+Without a configuration, `iw dev wlan0 scan` still verifies scanning and
+regulatory behaviour without exposing a passphrase.
 
 The M7 kernel loads at `0x80608000`. Mainline uses a ramdisk address of
 `0x84600000`, above the 28 MiB decompressed kernel. The downstream value
@@ -285,6 +337,8 @@ overlapping ramdisk address, so it did not isolate SMP correctly.
 - `arch/arm/boot/dts/qcom/qcom-apq8064-htc-m7ul-diag.dts`: panic-to-recovery variant
 - `arch/arm/configs/m7_defconfig`: first-boot kernel configuration
 - `tools/m7/build.sh`: reproducible kernel, initramfs and boot image build
+- `tools/m7/build-wifi-tools.sh`: pinned static ARM WLAN userspace build
+- `tools/m7/wifi_tools.py`: WLAN tool validation and initramfs installation
 - `tools/m7/initramfs/init`: read-only maintenance init
 - `tools/m7/watch-fastboot.sh`: adb/recovery to fastboot watcher
 - `tools/m7/watch-recovery.sh`: panic to TWRP, Pstore dump and fastboot watcher

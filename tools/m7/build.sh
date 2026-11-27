@@ -6,6 +6,9 @@ set -euo pipefail
 # SKIP_KERNEL_BUILD=1 packages existing kernel artifacts; SKIP_READER_BUILD=1
 # reuses prebuilt ARM helpers when the cross compiler is unavailable on the host.
 # M7_FIRMWARE_DIR optionally supplies an unpacked brcmfmac4335-sdio.bin and NVRAM.
+# M7_WIFI_TOOLS_DIR adds static ARM wpa_supplicant, wpa_cli and iw binaries.
+# M7_WPA_SUPPLICANT_CONF optionally embeds a WPA configuration from outside
+# this repository; its contents, path and hash never enter the build manifest.
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
 build=${1:-"$root/build/m7"}
@@ -13,8 +16,10 @@ busybox=${BUSYBOX:?Set BUSYBOX to a statically linked ARMv7 BusyBox binary}
 cross=${CROSS_COMPILE:-arm-linux-gnu-}
 jobs=${JOBS:-$(nproc)}
 firmware=${M7_FIRMWARE_DIR:-}
+wifi_tools=${M7_WIFI_TOOLS_DIR:-}
+wpa_config=${M7_WPA_SUPPLICANT_CONF:-}
 
-tools=(cpio gzip mkbootimg python3 readelf)
+tools=(cpio gzip mkbootimg python3 readelf realpath)
 if [ "${SKIP_READER_BUILD:-0}" != 1 ]; then
 	tools+=("$cross"gcc)
 fi
@@ -37,6 +42,25 @@ if readelf -l "$busybox" | grep -q 'INTERP'; then
 	exit 1
 fi
 
+root_path=$(realpath "$root")
+if [ -n "$wpa_config" ]; then
+	[ -n "$wifi_tools" ] || {
+		echo "M7_WPA_SUPPLICANT_CONF requires M7_WIFI_TOOLS_DIR" >&2
+		exit 1
+	}
+	[ -f "$wpa_config" ] || {
+		echo "missing WPA configuration: $wpa_config" >&2
+		exit 1
+	}
+	wpa_config=$(realpath "$wpa_config")
+	case "$wpa_config" in
+		"$root_path"/*)
+			echo "M7_WPA_SUPPLICANT_CONF must live outside the repository" >&2
+			exit 1
+			;;
+	esac
+fi
+
 cmdline=${M7_CMDLINE:-"console=ttyGS0 root=/dev/ram0 rw init=/init loglevel=7 ignore_loglevel"}
 dtb_name=${M7_DTB:-qcom-apq8064-htc-m7ul}
 base=0x80600000
@@ -44,6 +68,16 @@ kernel_offset=0x00008000
 ramdisk_offset=${M7_RAMDISK_OFFSET:-0x04000000}
 
 mkdir -p "$build"
+if [ -n "$wpa_config" ]; then
+	build_path=$(realpath "$build")
+	case "$build_path" in
+		"$root_path/build"|"$root_path/build"/*) ;;
+		"$root_path"/*)
+			echo "a credential-bearing image must build outside the repository or under build/" >&2
+			exit 1
+			;;
+	esac
+fi
 if [ "${SKIP_READER_BUILD:-0}" != 1 ]; then
 	"$cross"gcc -marm -nostdlib -static -O2 -Wall -Wextra \
 		-fno-builtin -fno-stack-protector -Wl,-e,_start \
@@ -106,7 +140,7 @@ initramfs=$build/initramfs
 rm -rf "$initramfs"
 mkdir -p "$initramfs"/{bin,sbin,dev,proc,sys,config,run,tmp,root,usr/bin,etc}
 cp "$busybox" "$initramfs/bin/busybox"
-for applet in sh mount mkdir ls head sleep ln echo cat uname dmesg hostname poweroff reboot grep tr cut; do
+for applet in sh mount mkdir ls head sleep ln echo cat uname dmesg hostname poweroff reboot grep tr cut ip ifconfig route udhcpc ping wget nc; do
 	ln -s busybox "$initramfs/bin/$applet"
 done
 install -m 0755 "$root/tools/m7/initramfs/init" "$initramfs/init"
@@ -132,6 +166,16 @@ if [ -n "$firmware" ]; then
 	done
 fi
 
+rm -f "$build/wifi-tools.json"
+if [ -n "$wifi_tools" ]; then
+	config_args=()
+	if [ -n "$wpa_config" ]; then
+		config_args=("$wpa_config")
+	fi
+	python3 "$root/tools/m7/wifi_tools.py" install \
+		"$wifi_tools" "$initramfs" "${config_args[@]}" > "$build/wifi-tools.json"
+fi
+
 (
 	cd "$initramfs"
 	find . -print0 | cpio --null -o -H newc 2>/dev/null | gzip -1
@@ -152,6 +196,9 @@ mkbootimg \
 	--output "$build/boot.img"
 
 sha256sum "$build/boot.img" "$build/zImage-dtb" "$dtb" "$build/initramfs.cpio.gz" "$build/readmem" "$build/reboot-bootloader" "$build/.config" > "$build/SHA256SUMS"
+if [ -f "$build/wifi-tools.json" ]; then
+	sha256sum "$build/wifi-tools.json" >> "$build/SHA256SUMS"
+fi
 
 python3 - "$build" "$root" "$cmdline" "$dtb_name" "$ramdisk_offset" \
 	"${M7_EARLY_REBOOT_MODE:-0}" "${M7_DIAGNOSTIC_REBOOT:-0}" \
@@ -171,6 +218,8 @@ ramdisk_offset = sys.argv[5]
 early_reboot_mode = sys.argv[6] == "1"
 diagnostic_reboot = sys.argv[7] == "1"
 watchdog_pet = sys.argv[8] == "1"
+wifi_tools_path = build / "wifi-tools.json"
+wifi_tools = json.loads(wifi_tools_path.read_text()) if wifi_tools_path.exists() else None
 
 def digest(path):
     h = hashlib.sha256()
@@ -222,7 +271,12 @@ manifest = {
         "watchdog_pet": watchdog_pet,
     },
 }
+if wifi_tools is not None:
+    manifest["image"]["wifi_tools"] = wifi_tools
 (build / "build-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 PY
 
 ls -lh "$build/boot.img" "$build/zImage-dtb" "$dtb" "$build/initramfs.cpio.gz" "$build/readmem" "$build/reboot-bootloader" "$build/build-manifest.json"
+if [ -f "$build/wifi-tools.json" ]; then
+	ls -lh "$build/wifi-tools.json"
+fi

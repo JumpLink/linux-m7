@@ -794,6 +794,27 @@ are accepted only outside the checkout or under `build/`.
 The initramfs also exposes the BusyBox `ip`, `ifconfig`, `route`, `udhcpc`,
 `ping`, `wget` and `nc` applets. No hardware association has been attempted yet.
 
+### 2026-11-27: Probe 105 scans from the clean tools build
+
+Probe 105 builds from clean commit `1a9dcb0ed` with the validated 1 MHz, 1-bit,
+high-speed DTS, the diagnostic reboot and the watchdog pet. The image is
+15,122,432 bytes with SHA-256
+`1066f4c2bdd24014de60d6e968153c1aed8266a8616211d112a1c5e62f5137f0`.
+
+- The guarded flash of `boot` and the following reboot returned `OKAY`.
+- A complete late `M7_HOST_PROBE` at 97.86 s reports `M7_WLAN_PRESENT=yes`,
+  `M7_SDCC3_PRESENT=yes` and `M7_WLAN_STATE=down`.
+- brcmfmac attach completes at 10.43 s with `attach_done err=0`.
+- `ip link set wlan0 up` returns 0, and `iw dev wlan0 info` reports a managed
+  interface on channel 1. Netlink works over the polling SDIO path.
+- `iw dev wlan0 scan` returns three BSS on 2.4 GHz and 5 GHz (channel 116).
+- After the scan the data path logs two `brcmf_sdio_hdparse: HW header checksum
+  error` lines; the driver terminates those frames and keeps running.
+- Association and DHCP remain untested because the image carries no credentials.
+
+The scan output stays outside the repository because it contains neighbouring
+SSIDs and device addresses.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
@@ -802,8 +823,9 @@ Synaptics touchscreen. BCM4335 Function 1, firmware download, confirmed p6 NVRAM
 and CR4 startup work. Probe 93 completes brcmfmac initialization over MMC SDIO
 interrupt polling and a complete live `M7_HOST_PROBE` reports
 `M7_WLAN_PRESENT=yes`. The interface remains down. Optional static
-`wpa_supplicant`, `wpa_cli` and `iw` are packaged reproducibly, but association
-is still untested. Active-high OOB and no-pull
+`wpa_supplicant`, `wpa_cli` and `iw` are packaged reproducibly, and Probe 105
+scans three BSS on 2.4 GHz and 5 GHz from the live shell; association is still
+untested. Active-high OOB and no-pull
 tests both failed before polling succeeded, so the remaining OOB fault is in
 signal delivery rather than the control frame. The bus now runs at 1 MHz
 and 1 bit with SD high-speed timing. Probe 101 proves the actual clock, clean
@@ -858,13 +880,17 @@ proven 1-bit bus.
 - Probe 104 returned `OKAY` from flash and reboot with SD high-speed enabled.
   Its complete late probe and dmesg capture report `new high speed SDIO card`,
   `M7_WLAN_PRESENT=yes` and no SDCC3 error. `MMCICLOCK` remains at 1 bit.
+- Probe 105 returned `OKAY` from flash and reboot from clean commit
+  `1a9dcb0ed`. Its complete late probe reports `M7_WLAN_PRESENT=yes`, and
+  `iw dev wlan0 scan` returns three BSS on 2.4 GHz and 5 GHz. The scan adds two
+  recovered HW header checksum errors to the data path.
 
 ## Next steps
 
-1. Build a probe with the validated 1 MHz, 1-bit, high-speed DTS and the optional
-   WLAN tools, then scan from the live shell.
-2. Verify an actual association and DHCP only with the user's network and
+1. Verify an actual association and DHCP only with the user's network and
    credentials supplied outside the repository.
+2. Investigate the HW header checksum errors in the SDIO receive path before
+   expecting stable throughput.
 3. Investigate higher clock rates separately after userspace connectivity is
    stable.
 4. Investigate OOB routing and MMCI SDIO IRQ support after the stable polling

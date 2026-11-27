@@ -30,7 +30,8 @@ partition-6 NVRAM pass the read-back check, CR4 starts, and the MMC core deliver
 control responses through SDIO interrupt polling. A complete live `M7_HOST_PROBE`
 from the clean Probe 104 reports `M7_WLAN_PRESENT=yes`; the interface is down
 until userspace brings it up. The diagnostic image can carry static ARM
-`wpa_supplicant`, `wpa_cli` and `iw`, but association is not tested yet.
+`wpa_supplicant`, `wpa_cli` and `iw`; a live scan from Probe 105 returns BSS on
+2.4 GHz and 5 GHz, but association is not tested yet.
 
 Probes 91 and 92 isolated the old failure to OOB delivery. Active-high selection
 reached the chip as `SEPINT=0x07`, and removing the GPIO 38 pull did not help.

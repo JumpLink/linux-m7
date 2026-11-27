@@ -26,6 +26,7 @@ not duplicated in this public repository; the workspace maps roles to models in
 | 2026-11-27 | `free-coder` | KOSTENLOS / public | Locate CR4, firmware callback, F2/IRQ, control and attach trace points | Completed; main session verified the call sites and added probe-only `M7_WLAN_TRACE` markers |
 | 2026-11-27 | `go-flash` | GO / private code | Diagnose the Probe 89 control-response timeout from the local trace and driver call sites | Rejected because the OpenCode Go monthly limit was reached; no report used, main session continued |
 | 2026-11-27 | main implementation session | KOSTENLOS / public | Add reproducible static ARM WLAN tools and credential-safe image packaging | Completed; 43 tests and two identical builds pass, hardware association is pending |
+| 2026-11-27 | main implementation session | KOSTENLOS / public | Flash clean Probe 105, run the late live probe and scan from the M7 shell | Completed; `wlan0` appears, netlink and scan work, association waits for credentials |
 
 Failed agent runs are kept in the log so a later reader does not mistake a
 missing report for missing work.

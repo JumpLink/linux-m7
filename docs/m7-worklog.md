@@ -862,6 +862,31 @@ The receive corruption is therefore a PIO FIFO alignment problem at 1 MHz byte
 mode, not firmware, NVRAM or the regulatory database. The recoverable checksum
 errors and the post-burst stall that needed a reassociate share this cause.
 
+### 2026-11-27: DMA is disabled by design for these transfers
+
+Reading the running device's `/sys/kernel/debug/dmaengine/summary` shows the BAM
+channels are assigned (`dma0chan1 = 12180000.mmc:rx`, `dma0chan2 = tx`), so
+`use_dma` is true. The DMA start still fails because
+`_mmci_dmae_prep_data` returns `-EINVAL` for any transfer not larger than the
+variant FIFO size:
+
+```c
+/* If less than or equal to the fifo size, don't bother with DMA */
+if (data->blksz * data->blocks <= variant->fifosize)
+    return -EINVAL;
+```
+
+Every SDIO transfer at 1 MHz is 4 to 32 bytes, far below the 64-byte FIFO, so
+DMA never engages and PIO is the intended path. The `dma=yes`/`dma=no` trace
+pair therefore labels the PIO fallback, not a recoverable DMA fault. Fixing the
+receive path means fixing PIO, not enabling DMA.
+
+The bad header `86 7a 88 52` is the device MAC `84:7a:88:52:93:56` with bit 1
+set in the first byte, i.e. the tail of a previous frame that the FIFO still
+held. With `rxhdr` far ahead of `rxdata`, most header reads return stale FIFO
+contents instead of a real header. The next focused experiment is a PIO
+FIFO-drain check at the frame boundary, not a clock or DMA change.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
@@ -948,10 +973,12 @@ proven 1-bit bus.
 
 ## Next steps
 
-1. Fix the PIO FIFO alignment that corrupts SDIO reads at 1 MHz byte mode; this
-   is the root cause of the HW header checksum errors and the post-burst stall.
-2. Decide whether to repair PIO alignment or get `mmci_dma_start` working so
-   transfers use the BAM DMA path instead.
+1. Fix the PIO FIFO drain at the frame boundary that leaves stale bytes for the
+   next header read at 1 MHz byte mode; this is the root cause of the HW header
+   checksum errors and the post-burst stall. DMA is ruled out: it is disabled by
+   design for transfers below the FIFO size.
+2. Build a focused probe that logs the FIFO count and the bytes left at each
+   frame boundary before changing the PIO path.
 3. Investigate higher clock rates separately after the receive path is stable.
 4. Investigate OOB routing and MMCI SDIO IRQ support after the stable polling
    path is recorded.

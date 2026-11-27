@@ -841,6 +841,27 @@ manifest records only `wpa_supplicant_config: true`.
   again, so the failure is recoverable rather than fatal.
 - `iw dev wlan0 link` reports 1.0 Mbit/s rates at -71 dBm.
 
+### 2026-11-27: Probes 107 and 108 locate the receive corruption
+
+Probe 107 adds a probe-only trace to `brcmf_sdio_hdparse` that logs the raw
+header bytes and the live host state whenever the SDPCM header check fails.
+Probe 108 adds `M7_MMC_TRACE` to `mmci_start_data` to record whether each SDIO
+transfer used DMA or PIO.
+
+- Probe 107 returned `OKAY` from flash and reboot. A scan produced two bad
+  headers. The first carried `raw=86 7a 88 52` with `clock=1000000 width=0`.
+  Those bytes are the device MAC `84:7a:88:52:93:56` shifted by one, so the
+  read returns a stale buffer offset by a byte, not a device fault.
+- Probe 108 returned `OKAY` from flash and reboot. Every SDIO transfer logged
+  `clock=1000000 width=0`. The `dma=yes`/`dma=no` pair per transfer shows
+  `mmci_dma_start` failing and every transfer falling back to PIO. A scan
+  produced three bad headers, all at 1 MHz and one bit, with the first again
+  carrying the MAC bytes and `rxhdr` far ahead of `rxdata`.
+
+The receive corruption is therefore a PIO FIFO alignment problem at 1 MHz byte
+mode, not firmware, NVRAM or the regulatory database. The recoverable checksum
+errors and the post-burst stall that needed a reassociate share this cause.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
@@ -917,12 +938,20 @@ proven 1-bit bus.
   reaches `wpa_state=COMPLETED` over WPA2-PSK, `udhcpc` obtains a lease and
   `ping` and `wget` reach the internet. A post-burst ARP failure recovers after
   `wpa_cli reassociate`.
+- Probe 107 returned `OKAY` from flash and reboot from clean commit
+  `04749843d`. A scan logged `badhdr raw=86 7a 88 52` at `clock=1000000
+  width=0`, the device MAC shifted by one byte.
+- Probe 108 returned `OKAY` from flash and reboot from clean commit
+  `41e22ade2`. Every SDIO transfer logged `clock=1000000 width=0` and fell back
+  to PIO; a scan logged three bad headers, the first again carrying the MAC
+  bytes with `rxhdr` far ahead of `rxdata`.
 
 ## Next steps
 
-1. Fix the SDIO receive-path HW header checksum errors before expecting stable
-   throughput at 1 MHz.
-2. Investigate the recoverable post-burst link stall that needs a reassociate.
+1. Fix the PIO FIFO alignment that corrupts SDIO reads at 1 MHz byte mode; this
+   is the root cause of the HW header checksum errors and the post-burst stall.
+2. Decide whether to repair PIO alignment or get `mmci_dma_start` working so
+   transfers use the BAM DMA path instead.
 3. Investigate higher clock rates separately after the receive path is stable.
 4. Investigate OOB routing and MMCI SDIO IRQ support after the stable polling
    path is recorded.

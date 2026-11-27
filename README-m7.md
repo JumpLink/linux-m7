@@ -32,8 +32,10 @@ from the clean Probe 104 reports `M7_WLAN_PRESENT=yes`; the interface is down
 until userspace brings it up. The diagnostic image can carry static ARM
 `wpa_supplicant`, `wpa_cli` and `iw`; Probe 105 scans BSS on 2.4 GHz and 5 GHz
 and Probe 106 associates over WPA2-PSK, gets a DHCP lease and reaches the
-internet. The SDIO receive path still logs recoverable HW header checksum
-errors.
+internet. Probes 107 and 108 trace the recoverable HW header checksum errors to
+a PIO FIFO alignment problem at 1 MHz byte mode: reads return a stale buffer
+offset by one byte, and every transfer falls back to PIO because the BAM DMA
+start fails.
 
 Probes 91 and 92 isolated the old failure to OOB delivery. Active-high selection
 reached the chip as `SEPINT=0x07`, and removing the GPIO 38 pull did not help.

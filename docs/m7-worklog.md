@@ -500,6 +500,52 @@ Run `20261127T133051Z` completed the corrected live capture on the same image. I
 dmesg block is 24,777 bytes. This satisfies the live-probe capture requirement but
 not the WLAN success criterion.
 
+### 2026-11-27: live PMIC diagnostics and active-high OOB candidate
+
+Run `20261127T134056Z` added read-only GPIO, pinctrl and IRQ diagnostics without
+flashing or rebooting. It reports `ready=true`, `probe_source=host`,
+`dmesg_captured=true`, `tty_closed=true` and `M7_WLAN_PRESENT=no` after 2160.58 s
+of uptime. The 6,834-byte diagnostic block separates two different GPIO 38 pins:
+
+- APQ TLMM GPIO 38 is unrelated to WLAN and reads high with a pull-up.
+- The WLAN host-wake pin is PM8921 GPIO 38. It is an input in normal mode with
+  VIN2, a 10 uA pull-down and push-pull buffer settings.
+- The pinctrl driver's `VIN2` label is the numeric encoding for PM8921 S4, so the
+  voltage source already matches Downstream. The pull does not: Downstream uses
+  `PM_GPIO_PULL_NO` while WLAN is on and a pull-down only while it is off.
+
+IRQ 57 does not appear in the post-failure `/proc/interrupts` dump because the
+failed brcmfmac probe frees its handler. That absence is not an interrupt count
+and does not prove that no IRQ arrived during the 2.568 s control wait.
+
+The source trace gives the next single-variable test. Downstream defines
+`HW_OOB=1` and requests `IORESOURCE_IRQ_HIGHLEVEL`. brcmfmac also describes its
+OOB path as level-triggered. The M7 DTS used `IRQ_TYPE_EDGE_FALLING`, which makes
+`pm8xxx_irq_set_type()` enable only the falling edge. brcmfmac consequently
+writes `SEPINT=0x03`, with active-low polarity. Probe 90 confirms that read-back.
+
+Commit `74bb395f0` changes only the M7 host-wake type to `IRQ_TYPE_LEVEL_HIGH`.
+This selects the PMIC rising-level source and makes brcmfmac write `SEPINT=0x07`.
+It leaves the GPIO pull, SDIO clock, bus width, firmware and NVRAM unchanged. The
+PMIC's `handle_level_irq` path is compatible with this source because its
+mask/ack operation latches and clears the event before dispatch.
+
+Probe 91 packages that DTB with the unchanged Probe 90 kernel payload. Its
+`boot.img` SHA-256 is
+`30cca25340f9e1a2d4da4d6cf2c9d5a74b641d12a64055cfe5a3cb8d248bdf74`, its
+`zImage-dtb` SHA-256 is
+`029770f5074988c04badcdaeda46f146a1fe9620ce5589488d2c305cde9fe8ee`, and its
+DTB SHA-256 is
+`904b2822ea863d52c80fe4084d64d6779c143ca36c4866d0533f2b68c71fc7f8`. The
+packaged firmware and p6 NVRAM match the confirmed Probe 90 hashes. The kernel
+release remains `7.1.0-g17664778f3fa-dirty` because only the DTB changed.
+
+No Fastboot device is visible, so Probe 91 has not run on hardware. Its pass
+condition is `oob_irq_seen`, a nonzero brcmfmac interrupt count, `SEPINT=0x07` and
+a complete live `M7_HOST_PROBE` with `M7_WLAN_PRESENT=yes`. If it still times out,
+the next single-variable test removes the GPIO 38 pull-down; it must not also
+change the IRQ type again.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
@@ -510,33 +556,40 @@ sends the first control frame, but receives no response. Probe 90 ran on hardwar
 and captured the timeout state. The device mailbox has response-side data, while
 the host reports no receive event and no brcmfmac interrupt. A complete live
 `M7_HOST_PROBE` confirms that `wlan0` is absent. The shell remains responsive.
+The live diagnostics identify a mismatch between Downstream's active-high OOB
+request and the M7 DTS falling-edge request. Probe 91 corrects only that type and
+is built, but it still needs a guarded hardware boot.
 
 ## Validation
 
-- 30 Python unit tests pass.
+- All 34 M7 Python unit tests pass.
 - Shell, Python syntax and `git diff --check` pass.
-- The Probe 90 kernel and DTB build passes without warnings.
-- `checkpatch --strict` reports no errors, warnings or checks for the Probe 90
-  source diff.
+- The Probe 90 kernel and DTB build passed without warnings.
+- The Probe 91 DTB compiles, and `checkpatch --strict` reports no errors, warnings
+  or checks for its source diff.
+- Probe 91 reuses the byte-identical Probe 90 kernel payload and the confirmed
+  firmware and p6 NVRAM contents.
 - Hardware validation uses the guarded `boot`-only flash path on HBOOT 1.61.
 - Probe 90 reached the ACM shell, returned `OKAY` from flash and reboot, and
   produced complete dmesg blocks.
-- The corrected capture produced one complete live host probe with a responsive
-  shell. It reports `M7_WLAN_PRESENT=no`, so WLAN validation remains open.
+- The corrected capture and the read-only diagnostic run each produced a complete
+  live host probe with a responsive shell. Both report `M7_WLAN_PRESENT=no`, so
+  WLAN validation remains open.
+- Probe 91 has not run on hardware because no Fastboot device is visible.
 
 ## Next steps
 
-1. Trace PM8921 GPIO 38, the pinctrl configuration, PMIC IRQ delivery, CCCR
-   `SEPINT` and SDIO interrupt routing. Keep the temporary WLAN traces until the
-   missing host interrupt is explained.
-2. Add a narrowly targeted diagnostic or a single-variable OOB fix only after a
-   physical FASTBOOT transition, lease check and `m7_ul` product guard.
-3. Require a complete live probe reporting `M7_WLAN_PRESENT=yes` before removing
-   instrumentation or raising the SDIO clock.
-4. Raise the SDIO clock, then test 4-bit and high-speed operation only after
+1. Transition the M7 physically to FASTBOOT, check the lease and verify the
+   `m7_ul` product guard.
+2. Boot Probe 91 through `phone-lease` and capture a complete live probe.
+3. Require `oob_irq_seen`, a nonzero brcmfmac interrupt count, `SEPINT=0x07` and
+   `M7_WLAN_PRESENT=yes` before removing instrumentation or raising the SDIO clock.
+4. If Probe 91 still times out, remove only the PM8921 GPIO 38 pull-down and
+   repeat the same capture.
+5. Raise the SDIO clock, then test 4-bit and high-speed operation only after
    `wlan0` appears.
-5. Add network userspace tools, then verify an actual association.
-6. Continue with display, audio, Bluetooth and modem as separate milestones.
+6. Add network userspace tools, then verify an actual association.
+7. Continue with display, audio, Bluetooth and modem as separate milestones.
 
 See also:
 

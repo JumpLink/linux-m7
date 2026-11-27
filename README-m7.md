@@ -27,16 +27,18 @@ The imported basis is Linux 7.1.0 at upstream commit
 
 WLAN has a bootable checkpoint: SDCC3 recognizes the BCM4335 and enables
 Function 1 at 400 kHz. A first-boot watchdog pet keeps the phone from resetting
-after about 25 s. Firmware and NVRAM writes pass a complete read-back check.
-Probe 89 uses the confirmed raw NVRAM range from partition 6. It completes the
-download, releases the CR4 reset and sends the first control frame, but receives
-no response within 2.568 s. No OOB interrupt was observed. `wlan0` is not created
-yet. Probe 90 ran on the phone and captured a complete kernel log. At the control
-timeout, the device mailbox contains `tohostmailbox=4`, but the host has no receive
-activity and no brcmfmac interrupt. IRQ 57 remains absent. The first capture was
-invalid because the tool sent an overlong line before the shell was ready. After
-the host capture fixes, a complete live `M7_HOST_PROBE` confirmed `wlan0` is still
-absent and captured a complete dmesg block. Display, audio, Bluetooth, modem and
+after about 25 s. Firmware and the confirmed partition-6 NVRAM pass a complete
+read-back check. Probe 90 releases the CR4 reset and sends the first control frame,
+but receives no response within 2.568 s. The device mailbox contains
+`tohostmailbox=4`, while the host has no receive event and no brcmfmac interrupt.
+A complete live `M7_HOST_PROBE` confirms that `wlan0` is absent.
+
+Read-only diagnostics show that the WLAN pin is PM8921 GPIO 38, not APQ TLMM GPIO
+38. Its S4 voltage source is correct, but it retains a pull-down. Downstream
+requests the host-wake IRQ as active-high level, while the M7 DTS requested a
+falling edge. Commit `74bb395f0` changes only that IRQ type. Probe 91 is built with
+the same kernel, firmware and NVRAM as Probe 90, but it has not run on hardware
+because no Fastboot device is visible. Display, audio, Bluetooth, modem and
 cameras remain separate milestones. The camera has no mainline APQ8064 driver and
 is a separate long-term project.
 

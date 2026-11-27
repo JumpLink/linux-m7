@@ -158,16 +158,20 @@ Files:
 Candidate: submit the board in stages as subsystems become stable.
 
 Current evidence: eMMC, USB ACM, Pstore, automatic Recovery and Synaptics
-S3202 touchscreen work. BCM4335 SDIO enumerates, enables Function 1 and
-completes the firmware and NVRAM download. Mainline writes the CR4 reset
-vector, but both the generic LibreELEC image and HTC's stock firmware time out
-before `wlan0` becomes operational.
+S3202 touchscreen work. BCM4335 SDIO enumerates, enables Function 1 and completes
+the firmware and confirmed partition-6 NVRAM download. Mainline writes the CR4
+reset vector and sends the first control frame, but Probe 90 times out before
+`wlan0` becomes operational. The device mailbox contains response-side data while
+the host sees no receive event. Live diagnostics show a mismatch between
+Downstream's active-high host-wake request and the M7 DTS falling-edge request.
+Probe 91 changes only the IRQ type and awaits a hardware boot.
 
 Open risks:
 
-- The post-reset CR4 path ends in a silent USB disconnect. The non-debug
-  firmware verifier is a no-op, so Dongle RAM still needs a read-back check.
-- An M7 NVRAM remains unresolved.
+- Prove the active-high OOB correction on hardware before treating it as a fix.
+- If it fails, test the remaining PM8921 GPIO 38 pull-down mismatch separately.
+- Confirm that the confirmed partition-6 NVRAM range is valid across M7 units
+  before generalizing the board support.
 - Display, audio, Bluetooth, modem and cameras are not enabled.
 - The defconfig is intentionally headless and not a daily-driver
   configuration.

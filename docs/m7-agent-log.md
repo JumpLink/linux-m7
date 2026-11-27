@@ -22,6 +22,7 @@ not duplicated in this public repository; the workspace maps roles to models in
 | 2026-11-26 | `free-coder` | KOSTENLOS / public | Resolve Downstream SDCC3 width, clock and power setup | Completed; identified 4-bit platform data, L6/L7 regulators, `WL_REG_ON` configuration and the MSM clock sequence; main session verified the code and tested each relevant difference |
 | 2026-11-26 | `go-flash` | GO / private docs | Update the hub workbench document | Rejected because the OpenCode Go monthly limit was reached; main session made the edit |
 | 2026-11-26 | `free-scout` | KOSTENLOS / public | Reconstruct the port history from public commits | Completed; chronology cross-checked against the main session record |
+| 2026-11-27 | `general` | KOSTENLOS / public | Retry public M7 WLAN, SDCC3 and NVRAM source research | Completed; public note written, primary-source claims still checked by the main session |
 
 Failed agent runs are kept in the log so a later reader does not mistake a
 missing report for missing work.

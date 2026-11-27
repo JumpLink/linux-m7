@@ -329,6 +329,30 @@ The first-boot initramfs now has an opt-in `M7_WATCHDOG_PET=1` mode. It starts
 the WDT0 reset-register pet loop immediately after devtmpfs is mounted. The
 build manifest records the mode as `watchdog_pet`.
 
+### 2026-11-27: complete RAM verification and local M7 NVRAM
+
+Probe 86 combined the watchdog petter with a full read-back of the stock
+firmware and NVRAM. USB stayed available for the complete 75 s capture. The
+firmware comparison covered all 588277 bytes and the NVRAM comparison all
+1832 bytes; both returned success. The dongle still timed out after the reset
+vector at 39.91 s with `err=-110`. SDIO write corruption is therefore ruled
+out.
+
+The same probe enabled `CONFIG_ATAGS_PROC` to look for HTC's
+`ATAG_MSM_WIFI`. Mainline reported `No ATAGs?` because this HBOOT path boots a
+DTB. The diagnostic KEXEC/ATAGS config was removed again.
+
+A read-only TWRP scan found text NVRAM in partitions 6 and 14. Partition 6
+contains 45 keys; partition 14 contains 150 keys and has different boardrev
+and MAC data. The partition-14 text is the complete M7 calibration candidate.
+It is stored only under `/tmp/opencode/m7-wlan-firmware-m7/` and is not
+committed or sent to public subagents.
+
+Probe 87 used that 2212-byte M7 NVRAM with the stock firmware. The watchdog
+petter kept the device stable for 75 s, but `wlan0` still did not appear and
+the log stopped after the firmware request. Probe 88 adds targeted callback,
+clock and first-transfer markers to locate that earlier stall.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves

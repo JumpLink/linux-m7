@@ -344,9 +344,9 @@ DTB. The diagnostic KEXEC/ATAGS config was removed again.
 
 A read-only TWRP scan found text NVRAM in partitions 6 and 14. Partition 6
 contains 45 keys; partition 14 contains 150 keys and has different boardrev
-and MAC data. The partition-14 text is the complete M7 calibration candidate.
-It is stored only under `/tmp/opencode/m7-wlan-firmware-m7/` and is not
-committed or sent to public subagents.
+and MAC data. Both candidates stay under
+`/tmp/opencode/m7-wlan-firmware-m7/` and are not committed or sent to public
+subagents.
 
 Probe 87 used that 2212-byte M7 NVRAM with the stock firmware. The watchdog
 petter kept the device stable for 75 s, but `wlan0` still did not appear and
@@ -361,23 +361,31 @@ runs, no `dongle is not responding` error appeared during the following
 60 s. `wlan0` still did not appear, so the remaining problem is after the
 reset vector but before the cfg80211 device is registered.
 
-The p14 extractor still needs refinement. Its 150 lines include adjacent
-radio-partition strings, partial keys and duplicate `ccode` entries. The next
-step is to isolate the exact WLAN text block or filter it against the
-downstream NVRAM key set before drawing a conclusion from probe 88.
+The p14 extractor included adjacent radio-partition strings, partial keys and
+duplicate `ccode` entries, so p14 is no longer the active input. The confirmed
+p6 range is 815 bytes with 45 CRLF key/value lines and a trailing NUL. Probe 89
+uses that raw p6 block and adds traces after the CR4 reset release, around the
+first F1 access, F2/IRQ setup, control responses, attach and bus start.
+
+The serial monitor now prefers a complete live host probe over the earlier
+initramfs snapshot. It interrupts a stale foreground `/proc/kmsg` reader,
+requests one delimited `dmesg` block after the live probe and bounds the final
+CDC ACM close. Flushing pending TTY output removed a 32-second
+`tty_wait_until_sent` delay; a real two-second capture now closes in 2.004 s.
+The initramfs no longer writes its own extra `dmesg` block.
 
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
 Pstore across failed boots, returns automatically to TWRP and runs the
 Synaptics touchscreen. WLAN enumerates the BCM4335, enables Function 1 and
-completes the firmware and NVRAM download. The CR4 reset vector is written,
-but both tested firmware images leave the dongle unresponsive before `wlan0`
-becomes operational.
+completes the firmware and NVRAM download. Probe 88 wrote the CR4 reset vector
+without a subsequent timeout, but `wlan0` still did not appear. Probe 89 will
+locate the next missing stage with the confirmed p6 NVRAM.
 
 ## Validation
 
-- 11 Python unit tests pass.
+- 17 Python unit tests pass.
 - Shell and Python syntax checks pass.
 - DTB builds pass without new warnings.
 - `checkpatch.pl` reports 0 errors and 0 warnings for the current diff.
@@ -385,10 +393,9 @@ becomes operational.
 
 ## Next steps
 
-1. Identify the silent reset during the firmware download and complete one
-   transfer without a watchdog or power reset.
-2. Provide a usable M7 NVRAM. No freely licensed M7-specific file is public;
-   any device-local calibration must stay outside git.
+1. Boot probe 89 and require a complete live host probe with one captured
+   `dmesg` block.
+2. Use the new trace stages to find the first failure after CR4 reset release.
 3. Raise the SDIO clock in steps after the 400 kHz firmware path is stable.
 4. Re-enable 4-bit and high-speed SDIO only after 1-bit operation is stable.
 5. Add network userspace tools, then verify an actual association.

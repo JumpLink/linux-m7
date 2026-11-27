@@ -114,6 +114,9 @@ install -m 0755 "$build/reboot-bootloader" "$initramfs/bin/reboot-bootloader"
 if [ "${M7_DIAGNOSTIC_REBOOT:-0}" = 1 ]; then
 	: > "$initramfs/m7-diag-reboot"
 fi
+if [ "${M7_WATCHDOG_PET:-0}" = 1 ]; then
+	: > "$initramfs/m7-wdt-pet"
+fi
 printf 'root:x:0:0:root:/root:/bin/sh\n' > "$initramfs/etc/passwd"
 printf 'root:x:0:\n' > "$initramfs/etc/group"
 
@@ -151,7 +154,8 @@ mkbootimg \
 sha256sum "$build/boot.img" "$build/zImage-dtb" "$dtb" "$build/initramfs.cpio.gz" "$build/readmem" "$build/reboot-bootloader" "$build/.config" > "$build/SHA256SUMS"
 
 python3 - "$build" "$root" "$cmdline" "$dtb_name" "$ramdisk_offset" \
-	"${M7_EARLY_REBOOT_MODE:-0}" "${M7_DIAGNOSTIC_REBOOT:-0}" <<'PY'
+	"${M7_EARLY_REBOOT_MODE:-0}" "${M7_DIAGNOSTIC_REBOOT:-0}" \
+	"${M7_WATCHDOG_PET:-0}" <<'PY'
 import datetime
 import hashlib
 import json
@@ -166,6 +170,7 @@ dtb_name = sys.argv[4]
 ramdisk_offset = sys.argv[5]
 early_reboot_mode = sys.argv[6] == "1"
 diagnostic_reboot = sys.argv[7] == "1"
+watchdog_pet = sys.argv[8] == "1"
 
 def digest(path):
     h = hashlib.sha256()
@@ -214,6 +219,7 @@ manifest = {
         "debug_channel": "usb-acm",
         "early_reboot_mode": early_reboot_mode,
         "diagnostic_reboot": diagnostic_reboot,
+        "watchdog_pet": watchdog_pet,
     },
 }
 (build / "build-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")

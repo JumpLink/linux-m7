@@ -310,6 +310,25 @@ hardware. The next probe reads the downloaded firmware and NVRAM back from
 Dongle RAM and compares every byte before reset; the normal non-debug build
 currently skips that verification.
 
+### 2026-11-27: the silent reboot is a hidden apps watchdog
+
+Probes 83 to 85 exposed a separate failure. USB stayed available for about
+26 s, then the phone reset and booted the same image again. Pstore contained
+no panic. Disabling `PANIC_ON_OOPS` and the panic timeout did not change the
+cycle, so this was not a kernel panic.
+
+The APQ8064 watchdog enable registers read as zero for both WDT0 and WDT1.
+Enabling the mainline QCOM watchdog driver did not stop the reset either.
+HTC's downstream watchdog defaults explain the timing: a 22 s bark and a
+bite three seconds later. A direct userspace experiment wrote `1` to WDT0's
+reset register at `0x0208a038` once per second. The same boot then passed
+60 s uptime, confirming that HBOOT leaves a watchdog running whose enable
+bit is not visible to Linux.
+
+The first-boot initramfs now has an opt-in `M7_WATCHDOG_PET=1` mode. It starts
+the WDT0 reset-register pet loop immediately after devtmpfs is mounted. The
+build manifest records the mode as `watchdog_pet`.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves

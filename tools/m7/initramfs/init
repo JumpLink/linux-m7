@@ -9,6 +9,20 @@ export TERM=linux
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
+
+# HBOOT leaves the apps watchdog running, but its enable bit is not visible
+# to Linux. Feeding WDT0_RST keeps that secure-side watchdog from resetting
+# the phone while the first-boot shell is active.
+if [ -e /m7-wdt-pet ]; then
+	(
+		while true; do
+			/bin/busybox devmem 0x0208a038 32 1 || break
+			sleep 1
+		done
+	) >/dev/null 2>&1 &
+	echo "m7-init: watchdog pet enabled" > /dev/console
+fi
+
 mkdir -p /sys/kernel/debug
 mount -t debugfs none /sys/kernel/debug 2>/dev/null || true
 mkdir -p /config /run /tmp

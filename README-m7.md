@@ -46,10 +46,13 @@ actual rate and status. Commit `4eb6d13b9` adds exact low-rate entries to the SD
 clock table. Probes 98, 100 and 101 report actual 450 kHz, 500 kHz and 1 MHz
 clocks and complete firmware, NVRAM, CR4 and control initialization. Probe 102
 removes all temporary MMCI `M7DBG` logging and confirms the clean 1 MHz image.
-Its complete dmesg has no SDCC3 command, data or timeout error. The next bus test
-is 4-bit mode. Association is not tested yet. Display, audio, Bluetooth, modem
-and cameras remain separate milestones. The camera has no mainline APQ8064
-driver and is a separate long-term project.
+Its complete dmesg has no SDCC3 command, data or timeout error. Probe 103 offers
+4-bit mode, but `MMCICLOCK` stays at 1 bit and WLAN still attaches without an
+SDIO error, consistent with a CCCR that advertises low speed without 4-bit
+block mode. The DTS keeps the proven 1-bit bus. The next timing test is
+high-speed mode. Association is not tested yet. Display, audio, Bluetooth,
+modem and cameras remain separate milestones. The camera has no mainline
+APQ8064 driver and is a separate long-term project.
 
 The full history, current result and upstream candidates are recorded in
 `docs/m7-worklog.md`, `docs/m7-upstream-candidates.md` and

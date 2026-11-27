@@ -735,6 +735,29 @@ lease, and rebooted. Firmware completes at 9.376 s, p6 NVRAM at 9.388 s and
 `M7_WLAN_PRESENT=yes` and `M7_WLAN_STATE=down`. The single complete dmesg block
 has 715 lines, zero `M7DBG` lines and no SDCC3 command, data or timeout error.
 
+### 2026-11-27: Probe 103 keeps the 1-bit SDIO bus
+
+Probe 103 changes only the DTS bus width from 1 bit to 4 bits. The clock stays at
+1 MHz, and firmware, p6 NVRAM and extracted initramfs contents remain unchanged.
+Its `boot.img` SHA-256 is
+`2c288675f9366172e2778d5e63588d53e1c656aefc5c799ed702551ce1f73b11`.
+
+Run `20261127T191135Z` verified `product: m7_ul`, flashed only `boot` through the
+lease, and rebooted. The complete late probe at 53.28 s reports
+`M7_WLAN_PRESENT=yes` and `M7_WLAN_STATE=down`. A read of `MMCICLOCK` at physical
+address `0x12180000` returns `0x00000001`; bits 10:9 are zero, so the controller
+still uses 1 bit. The complete dmesg block has 715 lines and no SDCC3 command,
+data or timeout error.
+
+The two early `mmc1: switch to bus width ... failed` messages belong to eMMC at
+`0x12400000`. In this run SDCC3 is `mmc0` at `0x12180000`; host numbering is not
+stable. `sdio_enable_wide()` skips the width change without an error when the
+host lacks 4-bit capability or when CCCR advertises low speed without 4-bit
+block mode. The DTS enables host 4-bit capability, and SDIO initialization
+completes without an error while the controller remains at 1 bit. The remaining
+path is the BCM4335 CCCR capability check. This matches the earlier 2026-11-26
+4-bit failure. The DTS returns to the proven 1-bit setting.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
@@ -745,8 +768,10 @@ interrupt polling and a complete live `M7_HOST_PROBE` reports
 `M7_WLAN_PRESENT=yes`. The interface remains down. Active-high OOB and no-pull
 tests both failed before polling succeeded, so the remaining OOB fault is in
 signal delivery rather than the control frame. The bus now runs at 1 MHz
-and 1 bit. Probe 101 proves the actual clock, and clean Probe 102 confirms full
-WLAN initialization after all temporary `M7DBG` MMCI logging is removed.
+and 1 bit. Probe 101 proves the actual clock, clean Probe 102 confirms full WLAN
+initialization after all temporary `M7DBG` MMCI logging is removed, and Probe
+103 shows that offering 4 bits does not change the controller width. The DTS
+keeps the proven 1-bit bus.
 
 ## Validation
 
@@ -786,20 +811,22 @@ WLAN initialization after all temporary `M7DBG` MMCI logging is removed.
 - Probe 102 returned `OKAY` from flash and reboot with all temporary MMCI
   `M7DBG` logging removed. Its complete late probe and dmesg capture contain no
   `M7DBG` line or SDCC3 error and report `M7_WLAN_PRESENT=yes`.
+- Probe 103 returned `OKAY` from flash and reboot with the host offering 4 bits.
+  Its complete late probe and dmesg capture report `M7_WLAN_PRESENT=yes` and no
+  SDCC3 error. `MMCICLOCK` remains at 1 bit, so 4-bit mode is not accepted.
 
 ## Next steps
 
-1. Build Probe 103 at 1 MHz and 4-bit bus width as a single-variable change.
+1. Build Probe 104 at 1 MHz, 1 bit and SD high-speed as a single-variable change.
 2. Transition the M7 physically to FASTBOOT, check the lease and verify the
    `m7_ul` product guard.
 3. Flash only `boot`, then require a complete live probe and one complete dmesg
    block with `M7_WLAN_PRESENT=yes` and no SDCC3 error.
-4. Verify the programmed bus width from the controller register or a temporary
-   physical-address trace, then test high-speed mode separately.
-5. Add network userspace tools and verify an actual association.
-6. Investigate OOB routing and MMCI SDIO IRQ support after the stable polling
+4. Read `MMCICLOCK` and the SDIO timing state, then add network userspace tools
+   and verify an actual association.
+5. Investigate OOB routing and MMCI SDIO IRQ support after the stable polling
    path is recorded.
-7. Continue with display, audio, Bluetooth and modem as separate milestones.
+6. Continue with display, audio, Bluetooth and modem as separate milestones.
 
 See also:
 

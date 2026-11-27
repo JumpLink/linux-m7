@@ -617,6 +617,24 @@ the same early failure as Probe 94, now at 500 kHz.
 The DTS returns to the proven 400 kHz setting. Probe 96 will test 450 kHz to
 narrow the clock boundary without changing bus width, transfer mode or pins.
 
+### 2026-11-27: Probe 96 fails at 450 kHz
+
+Probe 96 changes only `max-frequency` from 400 kHz to 450 kHz. The kernel payload,
+firmware, p6 NVRAM and extracted initramfs contents are identical to Probe 93.
+Its `boot.img` SHA-256 is
+`1039079242ff8687603cf12622aad54ee466ab135576b0e0d26856ec1ca4759e`.
+
+Run `20261127T173748Z` verified `product: m7_ul`, flashed only `boot` through the
+lease, and rebooted. The complete late probe at 83.39 s reports
+`M7_WLAN_PRESENT=no`. SDCC3 again creates the card, but Functions 1, 2 and 3 all
+fail with `-84` at 0.835 s. No firmware or control-frame trace runs.
+
+Three clock points now fail with the same early error: 450 kHz, 500 kHz and
+1 MHz. Another clock-only run would not identify the failing transfer. The DTS
+returns to 400 kHz. Probe 97 will keep 450 kHz and add temporary MMCI command and
+data error logs to distinguish command CRC, data CRC and timeout paths. The
+instrumentation will be removed after the trace is captured.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
@@ -648,16 +666,18 @@ and 1 bit.
   dmesg capture report `M7_WLAN_PRESENT=no` and an early `-84` brcmfmac failure.
 - Probe 95 returned `OKAY` from flash and reboot. Its complete late probe and
   dmesg capture report `M7_WLAN_PRESENT=no` and the same early `-84` failure.
+- Probe 96 returned `OKAY` from flash and reboot. Its complete late probe and
+  dmesg capture report `M7_WLAN_PRESENT=no` and the same early `-84` failure.
 
 ## Next steps
 
-1. Build Probe 96 with only `max-frequency = <450000>` changed from Probe 93.
+1. Build Probe 97 at 450 kHz with temporary MMCI command and data error logs.
 2. Transition the M7 physically to FASTBOOT, check the lease and verify the
    `m7_ul` product guard.
 3. Flash only `boot`, then require a complete live probe and dmesg capture with
    `M7_WLAN_PRESENT=yes` before keeping the higher clock.
-4. Increase the clock in separate steps only while each step passes. Revert to
-   400 kHz on a transfer or command failure.
+4. Use MMCI error instrumentation to identify the early failure, then resume
+   clock steps from the proven 400 kHz baseline.
 5. Test 4-bit mode, then high-speed mode as separate changes after the clock is
    stable.
 6. Add network userspace tools and verify an actual association.

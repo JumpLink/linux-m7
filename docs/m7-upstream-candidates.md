@@ -174,8 +174,9 @@ Open risks:
   and SDIO-bus traffic.
 - Confirm that the confirmed partition-6 NVRAM range is valid across M7 units
   before generalizing the board support.
-- Raise the SDIO clock from the proven 400 kHz in small steps. Probes 94 and 95
-  failed with `-84` before firmware download at 1 MHz and 500 kHz.
+- Identify the early SDIO transfer error before raising the clock again. Probes
+  94, 95 and 96 failed with `-84` before firmware download at 1 MHz, 500 kHz and
+  450 kHz. The proven clock remains 400 kHz.
 - Test 4-bit mode, high-speed mode and association after the clock is stable.
 - Display, audio, Bluetooth, modem and cameras are not enabled.
 - The defconfig is intentionally headless and not a daily-driver

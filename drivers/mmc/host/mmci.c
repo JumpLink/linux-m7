@@ -1455,6 +1455,18 @@ mmci_data_irq(struct mmci_host *host, struct mmc_data *data,
 		dev_err(mmc_dev(host->mmc), "stray MCI_DATABLOCKEND interrupt\n");
 
 	if (status & MCI_DATAEND || data->error) {
+		/*
+		 * Probe-only: at the end of an SDIO transfer the PIO path must
+		 * have drained the FIFO. A non-zero count here is stale data the
+		 * next header read will consume, which is what corrupts the
+		 * SDPCM header at 1 MHz.
+		 */
+		if (host->mmc->card && mmc_card_sdio(host->mmc->card))
+			pr_info("M7_MMC_TRACE: dataend fifocnt=%u size=%u xfered=%u err=%d pio=%d\n",
+				readl(host->base + MMCIFIFOCNT), host->size,
+				data->bytes_xfered, data->error,
+				!host->use_dma);
+
 		mmci_dma_finalize(host, data);
 
 		mmci_stop_data(host);
@@ -1662,6 +1674,15 @@ static int mmci_pio_read(struct mmci_host *host, char *buffer, unsigned int rema
 
 		status = readl(base + MMCISTATUS);
 	} while (status & MCI_RXDATAAVLBL);
+
+	/*
+	 * Probe-only: bytes left in the FIFO after the PIO read loop. SDIO
+	 * frames are not always a multiple of four, so a short read can leave
+	 * the tail behind for the next header.
+	 */
+	if (host->mmc->card && mmc_card_sdio(host->mmc->card))
+		pr_info("M7_MMC_TRACE: pio_read got=%d remain=%u fifocnt=%u status=%08x\n",
+			ptr - buffer, remain, readl(base + MMCIFIFOCNT), status);
 
 	return ptr - buffer;
 }

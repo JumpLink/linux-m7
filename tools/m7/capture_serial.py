@@ -42,7 +42,26 @@ HOST_PROBE_COMMANDS = (
     b"echo M7_DEFERRED=$(grep -E '12180000|wlan|mmc' /sys/kernel/debug/devices_deferred 2>/dev/null | tr '\\n' ' ')",
     b"echo M7_HOST_PROBE_END",
 )
+WLAN_DIAGNOSTIC_COMMANDS = (
+    b"echo M7_WLAN_DIAG_BEGIN",
+    b"grep -E 'gpiochip|gpio38' /sys/kernel/debug/gpio",
+    b"cat /sys/kernel/debug/pinctrl/*/pins",
+    b"grep -E 'ssbi|pm8xxx|brcmf| 57:' /proc/interrupts",
+    b"ls -l /sys/kernel/debug/irq/irqs/57 2>/dev/null",
+    b"echo M7_WLAN_DIAG_END",
+)
 DMESG_COMMAND = b"echo M7_DMESG_BEGIN; dmesg; echo M7_DMESG_END\n"
+
+
+def host_probe_commands(wlan_diagnostics=False):
+    """Insert optional read-only WLAN diagnostics before the probe terminator."""
+    if not wlan_diagnostics:
+        return HOST_PROBE_COMMANDS
+    return (
+        *HOST_PROBE_COMMANDS[:-1],
+        *WLAN_DIAGNOSTIC_COMMANDS,
+        HOST_PROBE_COMMANDS[-1],
+    )
 
 
 def close_tty(fd, timeout):
@@ -126,6 +145,9 @@ def parse_probe(data):
         ready = True
         source = name
         break
+    diagnostics = complete_block(data, b"M7_WLAN_DIAG_BEGIN", b"M7_WLAN_DIAG_END")
+    if diagnostics is not None:
+        probe["M7_WLAN_DIAGNOSTICS"] = diagnostics.decode("utf-8", "replace")
     return ready, probe, source
 
 
@@ -138,6 +160,11 @@ def main():
         "--require-wlan",
         action="store_true",
         help="fail unless the live probe reports wlan0",
+    )
+    parser.add_argument(
+        "--wlan-diagnostics",
+        action="store_true",
+        help="append read-only GPIO, pinctrl and IRQ diagnostics",
     )
     parser.add_argument(
         "--close-timeout",
@@ -172,7 +199,7 @@ def main():
     next_probe = None
     dmesg_requested = False
     log_path = pathlib.Path(args.log)
-    probe_command = b"\n".join(HOST_PROBE_COMMANDS) + b"\n"
+    probe_command = b"\n".join(host_probe_commands(args.wlan_diagnostics)) + b"\n"
 
     with log_path.open("wb", buffering=0) as log:
         # A previous monitor may have left cat /proc/kmsg in the foreground.

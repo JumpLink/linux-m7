@@ -8,8 +8,10 @@ from unittest import mock
 from tools.m7.capture_serial import (
     DMESG_COMMAND,
     HOST_PROBE_COMMANDS,
+    WLAN_DIAGNOSTIC_COMMANDS,
     close_tty,
     has_complete_dmesg,
+    host_probe_commands,
     parse_probe,
     shell_ready,
 )
@@ -17,10 +19,22 @@ from tools.m7.capture_serial import (
 
 class HostProbeCommandTest(unittest.TestCase):
     def test_each_probe_line_fits_the_busybox_console_buffer(self):
-        for command in HOST_PROBE_COMMANDS:
-            with self.subTest(command=command):
-                self.assertLessEqual(len(command), 200)
-                self.assertNotIn(b"\n", command)
+        for diagnostics in (False, True):
+            for command in host_probe_commands(diagnostics):
+                with self.subTest(command=command, diagnostics=diagnostics):
+                    self.assertLessEqual(len(command), 113)
+                    self.assertNotIn(b"\n", command)
+
+    def test_standard_probe_omits_diagnostics(self):
+        self.assertEqual(host_probe_commands(), HOST_PROBE_COMMANDS)
+        self.assertFalse(any(b"M7_WLAN_DIAG" in command for command in HOST_PROBE_COMMANDS))
+
+    def test_diagnostics_precede_probe_terminator(self):
+        commands = host_probe_commands(wlan_diagnostics=True)
+
+        self.assertEqual(commands[: len(HOST_PROBE_COMMANDS) - 1], HOST_PROBE_COMMANDS[:-1])
+        self.assertEqual(commands[len(HOST_PROBE_COMMANDS) - 1 : -1], WLAN_DIAGNOSTIC_COMMANDS)
+        self.assertEqual(commands[-1], b"echo M7_HOST_PROBE_END")
 
 
 class DmesgCommandTest(unittest.TestCase):
@@ -185,6 +199,32 @@ class ParseProbeTest(unittest.TestCase):
         self.assertTrue(ready)
         self.assertEqual(source, "initramfs")
         self.assertEqual(probe["M7_WLAN_PRESENT"], "no")
+
+
+    def test_complete_wlan_diagnostics_are_reported(self):
+        data = (
+            b"M7_HOST_PROBE_BEGIN\nM7_WLAN_PRESENT=no\n"
+            b"M7_WLAN_DIAG_BEGIN\ngpio38: high\nM7_WLAN_DIAG_END\n"
+            b"M7_HOST_PROBE_END\n"
+        )
+
+        ready, probe, source = parse_probe(data)
+
+        self.assertTrue(ready)
+        self.assertEqual(source, "host")
+        self.assertEqual(probe["M7_WLAN_DIAGNOSTICS"], "gpio38: high")
+
+    def test_incomplete_wlan_diagnostics_are_not_reported(self):
+        data = (
+            b"M7_HOST_PROBE_BEGIN\nM7_WLAN_PRESENT=no\n"
+            b"M7_WLAN_DIAG_BEGIN\ngpio38: high\nM7_HOST_PROBE_END\n"
+        )
+
+        ready, probe, source = parse_probe(data)
+
+        self.assertTrue(ready)
+        self.assertEqual(source, "host")
+        self.assertNotIn("M7_WLAN_DIAGNOSTICS", probe)
 
 
 if __name__ == "__main__":

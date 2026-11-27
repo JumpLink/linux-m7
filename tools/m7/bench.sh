@@ -15,6 +15,7 @@ serial=${FASTBOOT_SERIAL:-}
 method=${M7_BOOT_METHOD:-boot}
 partition=
 require_wlan=${M7_REQUIRE_WLAN:-0}
+wlan_diagnostics=${M7_WLAN_DIAGNOSTICS:-0}
 
 if ! [[ "$tty_timeout" =~ ^[1-9][0-9]*$ ]]; then
 	echo "M7_TTY_TIMEOUT must be a positive integer" >&2
@@ -23,6 +24,11 @@ fi
 
 if [[ "$require_wlan" != 0 && "$require_wlan" != 1 ]]; then
 	echo "M7_REQUIRE_WLAN must be 0 or 1" >&2
+	exit 1
+fi
+
+if [[ "$wlan_diagnostics" != 0 && "$wlan_diagnostics" != 1 ]]; then
+	echo "M7_WLAN_DIAGNOSTICS must be 0 or 1" >&2
 	exit 1
 fi
 
@@ -111,6 +117,9 @@ if [ -n "$tty" ]; then
 	if [ "$require_wlan" = 1 ]; then
 		capture_args+=(--require-wlan)
 	fi
+	if [ "$wlan_diagnostics" = 1 ]; then
+		capture_args+=(--wlan-diagnostics)
+	fi
 	set +e
 	timeout "$(( ${duration%.*} + 10 ))s" \
 		python3 "$root/tools/m7/capture_serial.py" "$tty" "$run/serial.log" \
@@ -139,7 +148,7 @@ dump_fastboot > "$run/fastboot-after.txt" || true
 
 python3 - "$run" "$root" "$image" "$started" "$ended" "$elapsed" \
 	"$fastboot_rc" "$tty" "$ready" "$method" "$partition" "$fastboot_log" "$reboot_rc" \
-	"$capture_rc" "$wlan_ready" "$require_wlan" <<'PY'
+	"$capture_rc" "$wlan_ready" "$require_wlan" "$wlan_diagnostics" <<'PY'
 import json
 import pathlib
 import subprocess
@@ -148,7 +157,7 @@ import sys
 (
     run, root, image, started, ended, elapsed, fastboot_rc, tty, ready,
     method, partition, fastboot_log, reboot_rc, capture_rc, wlan_ready,
-    require_wlan,
+    require_wlan, wlan_diagnostics,
 ) = sys.argv[1:]
 run = pathlib.Path(run)
 root = pathlib.Path(root)
@@ -158,6 +167,11 @@ summary = (
     if summary_path.exists()
     else {"probe": {}}
 )
+diagnostics = summary["probe"].pop("M7_WLAN_DIAGNOSTICS", None)
+diagnostics_log = None
+if diagnostics is not None:
+    diagnostics_log = "wlan-diagnostics.txt"
+    (run / diagnostics_log).write_text(diagnostics + "\n")
 commit = subprocess.run(
     ["git", "-C", str(root), "rev-parse", "HEAD"],
     text=True, capture_output=True, check=True,
@@ -190,6 +204,7 @@ manifest = {
         "capture_returncode": int(capture_rc),
         "wlan_ready": wlan_ready == "true",
         "require_wlan": require_wlan == "1",
+        "wlan_diagnostics": wlan_diagnostics == "1",
         "probe": summary["probe"],
     },
     "artifacts": {
@@ -198,6 +213,7 @@ manifest = {
         "fastboot_reboot_log": "fastboot-reboot.txt" if method == "flash" else None,
         "usb_before": "lsusb-before.txt",
         "usb_after": "lsusb-after.txt",
+        "wlan_diagnostics": diagnostics_log,
     },
 }
 (run / "run-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")

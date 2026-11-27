@@ -707,6 +707,34 @@ The complete late probe at 49.23 s reports `M7_WLAN_PRESENT=yes` and
 `M7_WLAN_STATE=down`. The single complete dmesg block has 735 lines and contains
 no SDCC3 command, data or timeout error.
 
+### 2026-11-27: Probe 101 validates an actual 1 MHz clock
+
+Probe 101 changes only the DTS from 500 kHz to 1 MHz. The temporary physical-
+address IOS log, firmware, p6 NVRAM and extracted initramfs contents remain
+unchanged. Its `boot.img` SHA-256 is
+`a87375df1ea68d25d4c5530c5d4fa29d5566dbfb9ae6e7b8ab85e8463b23d487`.
+
+Run `20261127T185319Z` verified `product: m7_ul`, flashed only `boot` through the
+lease, and rebooted. After 400 kHz enumeration, SDCC3 reports
+`clock=1000000 actual=1000000 mclk=1000000 width=0 timing=0`. Firmware completes
+at 9.385 s, p6 NVRAM at 9.396 s, CR4 starts and `attach_done` follows at 10.536 s.
+The complete late probe at 78.38 s reports `M7_WLAN_PRESENT=yes` and
+`M7_WLAN_STATE=down`. The single complete dmesg block has 726 lines and contains
+no SDCC3 command, data or timeout error.
+
+### 2026-11-27: Probe 102 confirms the clean 1 MHz image
+
+Probe 102 removes the temporary `M7DBG` IOS log from MMCI and keeps the 1 MHz
+DTS. Firmware, p6 NVRAM and extracted initramfs contents remain unchanged. The
+built kernel contains no `M7DBG` string. Its `boot.img` SHA-256 is
+`a9cc01651ed26d144f1d1d1695ca79b52f0254ec26c083371efcee68538a5324`.
+
+Run `20261127T190159Z` verified `product: m7_ul`, flashed only `boot` through the
+lease, and rebooted. Firmware completes at 9.376 s, p6 NVRAM at 9.388 s and
+`attach_done` at 10.532 s. The complete late probe at 52.40 s reports
+`M7_WLAN_PRESENT=yes` and `M7_WLAN_STATE=down`. The single complete dmesg block
+has 715 lines, zero `M7DBG` lines and no SDCC3 command, data or timeout error.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
@@ -716,9 +744,9 @@ and CR4 startup work. Probe 93 completes brcmfmac initialization over MMC SDIO
 interrupt polling and a complete live `M7_HOST_PROBE` reports
 `M7_WLAN_PRESENT=yes`. The interface remains down. Active-high OOB and no-pull
 tests both failed before polling succeeded, so the remaining OOB fault is in
-signal delivery rather than the control frame. The bus now runs at 500 kHz
-and 1 bit. Probe 100 proves the actual clock and completes a live WLAN probe at
-that rate.
+signal delivery rather than the control frame. The bus now runs at 1 MHz
+and 1 bit. Probe 101 proves the actual clock, and clean Probe 102 confirms full
+WLAN initialization after all temporary `M7DBG` MMCI logging is removed.
 
 ## Validation
 
@@ -752,22 +780,26 @@ that rate.
 - Probe 100 returned `OKAY` from flash and reboot. Its complete late probe and
   dmesg capture confirm an actual 500 kHz clock, no SDCC3 error and
   `M7_WLAN_PRESENT=yes`.
+- Probe 101 returned `OKAY` from flash and reboot. Its complete late probe and
+  dmesg capture confirm an actual 1 MHz clock, no SDCC3 error and
+  `M7_WLAN_PRESENT=yes`.
+- Probe 102 returned `OKAY` from flash and reboot with all temporary MMCI
+  `M7DBG` logging removed. Its complete late probe and dmesg capture contain no
+  `M7DBG` line or SDCC3 error and report `M7_WLAN_PRESENT=yes`.
 
 ## Next steps
 
-1. Build Probe 101 at 1 MHz with the physical-address IOS clock log.
+1. Build Probe 103 at 1 MHz and 4-bit bus width as a single-variable change.
 2. Transition the M7 physically to FASTBOOT, check the lease and verify the
    `m7_ul` product guard.
-3. Flash only `boot`, then require an actual 1 MHz trace, a complete live probe
-   and one complete dmesg block with `M7_WLAN_PRESENT=yes`.
-4. Remove all temporary MMCI instrumentation and rebuild the clean image at the
-   highest proven clock.
-5. Test 4-bit mode, then high-speed mode as separate changes after the clock is
-   stable.
-6. Add network userspace tools and verify an actual association.
-7. Investigate OOB routing and MMCI SDIO IRQ support after the stable polling
+3. Flash only `boot`, then require a complete live probe and one complete dmesg
+   block with `M7_WLAN_PRESENT=yes` and no SDCC3 error.
+4. Verify the programmed bus width from the controller register or a temporary
+   physical-address trace, then test high-speed mode separately.
+5. Add network userspace tools and verify an actual association.
+6. Investigate OOB routing and MMCI SDIO IRQ support after the stable polling
    path is recorded.
-8. Continue with display, audio, Bluetooth and modem as separate milestones.
+7. Continue with display, audio, Bluetooth and modem as separate milestones.
 
 See also:
 

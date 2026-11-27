@@ -108,7 +108,6 @@ fi
 	echo "M7_DEFERRED=$(grep -E '12180000|wlan|mmc' /sys/kernel/debug/devices_deferred 2>/dev/null | tr '\n' ' ')"
 	echo "M7_READY_END"
 	echo
-	dmesg
 } > /dev/ttyGS0 2>&1
 
 while true; do

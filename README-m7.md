@@ -28,11 +28,10 @@ The imported basis is Linux 7.1.0 at upstream commit
 WLAN has a bootable checkpoint: SDCC3 recognizes the BCM4335 and enables
 Function 1 at 400 kHz. A first-boot watchdog pet keeps the phone from resetting
 after about 25 s. Firmware and NVRAM writes pass a complete read-back check.
-The generic LibreELEC NVRAM still ends in `err=-110`. A confirmed raw NVRAM
-range from partition 6 completes the reset-vector path without that error, but
-`wlan0` is not created yet. Probe 89 is built with targeted startup traces; its
-hardware run is pending an M7 fastboot endpoint. Display, audio, Bluetooth,
-modem and cameras remain separate milestones.
+Probe 89 uses the confirmed raw NVRAM range from partition 6. It completes the
+download, releases the CR4 reset and sends the first control frame, but receives
+no response within 2.568 s. No OOB interrupt was observed. `wlan0` is not created
+yet. Display, audio, Bluetooth, modem and cameras remain separate milestones.
 The camera has no mainline APQ8064 driver and is a separate long-term project.
 
 The full history, current result and upstream candidates are recorded in

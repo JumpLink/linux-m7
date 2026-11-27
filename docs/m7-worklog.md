@@ -384,39 +384,68 @@ Probe 89 is built from `04de87aae` as kernel `7.1.0-g04de87aae3b2`. Its
 `boot.img` SHA-256 is
 `803cb873f536ca6b57adbeec960caf6cae9f7fb8aac7ca001eaf8f79ee86ea94`, and the
 artifacts are staged under `/tmp/opencode/m7-wlan-probe-89/`. The embedded stock
-firmware and p6 NVRAM hashes match the selected inputs. No phone write or reboot
-has occurred for this probe: the lease currently finds no M7 fastboot endpoint,
-and the existing ACM endpoint returns zero bytes. The hardware run is pending a
-physical FASTBOOT transition.
+firmware and p6 NVRAM hashes match the selected inputs.
+
+### 2026-11-27: probe 89 reaches the first control-response timeout
+
+A physical FASTBOOT transition allowed the lease-guarded `boot` flash. Fastboot
+reported `OKAY` for both the write and reboot. The phone booted
+`7.1.0-g04de87aae3b2`, and the watchdog petter kept ACM available for the live
+read-only diagnostics.
+
+The trace shows a successful firmware callback, all code and NVRAM writes, CR4
+reset release, post-reset F1 access, F2 enable, OOB IRQ registration and the
+first 36-byte control transmit. The first receive then waits 2.568 s without a
+control response:
+
+- `ctrl_wait_enter condition=0` at 20.712151 s
+- `ctrl_wait_done condition=0 timeout=0 pending=0` at 23.279985 s
+- `rxctl_done rxlen=0`
+- `bus_preinit ret=-110`
+
+No `oob_irq_seen` marker appeared. Live GPIO 38 reads high, but `/proc/interrupts`
+has no IRQ 57 entry. After the failed attach, a read-only dump of SDCC3
+`0x12180000..0x12180048` returned zero, while debugfs still reports `mmc0`
+powered on at 400 kHz in 1-bit legacy mode.
+
+The first capture falsely accepted the echoed shell command as a live probe and
+dmesg block. The parser now requires standalone marker lines. Three regression
+tests cover the echoed probe, echoed dmesg command and snapshot fallback.
+Replaying the actual Probe 89 `serial.log` returns `ready=false`, an empty probe,
+`source=None` and `dmesg_captured=false`; the old run manifest is not a valid
+success record.
 
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
 Pstore across failed boots, returns automatically to TWRP and runs the
 Synaptics touchscreen. WLAN enumerates the BCM4335, enables Function 1 and
-completes the firmware and NVRAM download. Probe 88 wrote the CR4 reset vector
-without a subsequent timeout, but `wlan0` still did not appear. Probe 89 is built
-and staged with the confirmed p6 NVRAM; its hardware trace run is still pending.
+completes the firmware and p6 NVRAM download. Probe 89 releases the CR4 reset and
+sends the first control frame, but receives no response. `wlan0` is still absent.
 
 ## Validation
 
-- 20 Python unit tests pass.
+- 23 Python unit tests pass.
 - Shell and Python syntax checks pass.
 - The probe-89 kernel and DTB build passes without warnings.
-- `checkpatch.pl` reports 0 errors and 0 warnings for the current diff.
 - Hardware validation uses the guarded `boot`-only flash path on HBOOT 1.61.
 
 ## Next steps
 
-1. Recover an M7 fastboot endpoint through a physical FASTBOOT transition; do
-   not force the unreliable Linux reboot magic.
-2. Under the lease and product guard, flash only `boot`, require a complete live
-   host probe and capture one `dmesg` block.
-3. Use the new trace stages to find the first failure after CR4 reset release.
-4. Raise the SDIO clock in steps after the 400 kHz firmware path is stable.
-5. Re-enable 4-bit and high-speed SDIO only after 1-bit operation is stable.
-6. Add network userspace tools, then verify an actual association.
-7. Continue with display, audio, Bluetooth and modem as separate milestones.
+1. Add read-only F1/F2 interrupt and SDCC3 register snapshots at the control
+   wait timeout, then build Probe 90.
+2. Obtain a physical FASTBOOT transition, recheck the lease and `m7_ul` product
+   guard, and flash only `boot`.
+3. Require one complete live host probe and one complete dmesg block. Use the
+   first missing trace and the timeout register snapshot to separate CR4, IRQ
+   and SDIO receive-path failures.
+4. Compare p6 with a minimal NVRAM only if the snapshot does not isolate the
+   cause.
+5. Remove the temporary WLAN traces after identifying the root cause.
+6. Raise the SDIO clock, then test 4-bit and high-speed operation only after
+   `wlan0` appears.
+7. Add network userspace tools, then verify an actual association.
+8. Continue with display, audio, Bluetooth and modem as separate milestones.
 
 See also:
 

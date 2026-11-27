@@ -45,6 +45,11 @@ class DmesgCaptureTest(unittest.TestCase):
 
         self.assertFalse(has_complete_dmesg(data))
 
+    def test_echoed_command_is_not_a_dmesg_block(self):
+        data = b"echo M7_DMESG_BEGIN; dmesg; echo M7_DMESG_END\n"
+
+        self.assertFalse(has_complete_dmesg(data))
+
 
 class ParseProbeTest(unittest.TestCase):
     def test_missing_probe_is_not_ready(self):
@@ -83,6 +88,31 @@ class ParseProbeTest(unittest.TestCase):
     def test_incomplete_live_probe_falls_back_to_snapshot(self):
         data = (
             b"M7_HOST_PROBE_BEGIN\nM7_WLAN_PRESENT=yes\n"
+            b"M7_READY_BEGIN\nM7_WLAN_PRESENT=no\nM7_READY_END\n"
+        )
+
+        ready, probe, source = parse_probe(data)
+
+        self.assertTrue(ready)
+        self.assertEqual(source, "initramfs")
+        self.assertEqual(probe["M7_WLAN_PRESENT"], "no")
+
+    def test_echoed_probe_command_is_not_a_live_probe(self):
+        data = (
+            b"echo M7_HOST_PROBE_BEGIN;echo M7_KERNEL=$(uname -r);"
+            b"echo M7_WLAN_PRESENT=no;echo M7_HOST_PROBE_END\n"
+        )
+
+        ready, probe, source = parse_probe(data)
+
+        self.assertFalse(ready)
+        self.assertEqual(probe, {})
+        self.assertIsNone(source)
+
+    def test_echoed_command_does_not_hide_initramfs_snapshot(self):
+        data = (
+            b"echo M7_HOST_PROBE_BEGIN;echo M7_WLAN_PRESENT=no;"
+            b"echo M7_HOST_PROBE_END\n"
             b"M7_READY_BEGIN\nM7_WLAN_PRESENT=no\nM7_READY_END\n"
         )
 

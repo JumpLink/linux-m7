@@ -41,13 +41,23 @@ def close_tty(fd, timeout):
     return True
 
 
+def complete_block(data, begin, end):
+    """Return the last block delimited by standalone output lines."""
+    lines = data.splitlines()
+    block = None
+    for index, line in enumerate(lines):
+        if line.strip() != begin:
+            continue
+        for end_index in range(index + 1, len(lines)):
+            if lines[end_index].strip() == end:
+                block = b"\n".join(lines[index + 1 : end_index])
+                break
+    return block
+
+
 def has_complete_dmesg(data):
     """Return whether one complete delimited kernel-log block was captured."""
-    begin = data.find(b"M7_DMESG_BEGIN")
-    if begin < 0:
-        return False
-    end = data.find(b"M7_DMESG_END", begin + len(b"M7_DMESG_BEGIN"))
-    return end >= 0
+    return complete_block(data, b"M7_DMESG_BEGIN", b"M7_DMESG_END") is not None
 
 
 def parse_probe(data):
@@ -59,9 +69,9 @@ def parse_probe(data):
         ("host", b"M7_HOST_PROBE_BEGIN", b"M7_HOST_PROBE_END"),
         ("initramfs", b"M7_READY_BEGIN", b"M7_READY_END"),
     ):
-        if begin not in data or end not in data:
+        block = complete_block(data, begin, end)
+        if block is None:
             continue
-        block = data.split(begin, 1)[1].split(end, 1)[0]
         for line in block.decode("utf-8", "replace").splitlines():
             if "=" not in line:
                 continue

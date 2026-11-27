@@ -24,6 +24,7 @@ not duplicated in this public repository; the workspace maps roles to models in
 | 2026-11-26 | `free-scout` | KOSTENLOS / public | Reconstruct the port history from public commits | Completed; chronology cross-checked against the main session record |
 | 2026-11-27 | `general` | KOSTENLOS / public | Retry public M7 WLAN, SDCC3 and NVRAM source research | Completed; public note written, primary-source claims still checked by the main session |
 | 2026-11-27 | `free-coder` | KOSTENLOS / public | Locate CR4, firmware callback, F2/IRQ, control and attach trace points | Completed; main session verified the call sites and added probe-only `M7_WLAN_TRACE` markers |
+| 2026-11-27 | `go-flash` | GO / private code | Diagnose the Probe 89 control-response timeout from the local trace and driver call sites | Rejected because the OpenCode Go monthly limit was reached; no report used, main session continued |
 
 Failed agent runs are kept in the log so a later reader does not mistake a
 missing report for missing work.

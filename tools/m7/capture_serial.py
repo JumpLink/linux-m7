@@ -42,6 +42,7 @@ HOST_PROBE_COMMANDS = (
     b"echo M7_DEFERRED=$(grep -E '12180000|wlan|mmc' /sys/kernel/debug/devices_deferred 2>/dev/null | tr '\\n' ' ')",
     b"echo M7_HOST_PROBE_END",
 )
+DMESG_COMMAND = b"echo M7_DMESG_BEGIN; dmesg; echo M7_DMESG_END\n"
 
 
 def close_tty(fd, timeout):
@@ -69,15 +70,23 @@ def close_tty(fd, timeout):
     return True
 
 
+def output_line(line):
+    """Strip BusyBox prompts that share a line with command output."""
+    line = line.strip()
+    while line.startswith(b"/ #"):
+        line = line[3:].lstrip()
+    return line
+
+
 def complete_block(data, begin, end):
-    """Return the last block delimited by standalone output lines."""
-    lines = data.splitlines()
+    """Return the last block delimited by output lines, ignoring shell prompts."""
+    lines = [output_line(line) for line in data.splitlines()]
     block = None
     for index, line in enumerate(lines):
-        if line.strip() != begin:
+        if line != begin:
             continue
         for end_index in range(index + 1, len(lines)):
-            if lines[end_index].strip() == end:
+            if lines[end_index] == end:
                 block = b"\n".join(lines[index + 1 : end_index])
                 break
     return block
@@ -164,13 +173,13 @@ def main():
     dmesg_requested = False
     log_path = pathlib.Path(args.log)
     probe_command = b"\n".join(HOST_PROBE_COMMANDS) + b"\n"
-    dmesg_command = b"echo M7_DMESG_BEGIN; dmesg; echo M7_DMESG_END\\n"
 
     with log_path.open("wb", buffering=0) as log:
         # A previous monitor may have left cat /proc/kmsg in the foreground.
-        # ISIG stays enabled so this interrupts that reader and returns the shell.
+        # ISIG stays enabled so Ctrl-C interrupts that reader. The newline makes
+        # an idle shell redraw its prompt, which gates the host probe.
         try:
-            os.write(fd, b"\x03")
+            os.write(fd, b"\x03\n")
         except OSError:
             pass
 
@@ -202,9 +211,13 @@ def main():
             log.write(chunk)
 
             ready, probe, probe_source = parse_probe(data)
-            if probe_source == "host" and not dmesg_requested:
+            if (
+                probe_source == "host"
+                and not dmesg_requested
+                and b"/ #" in data[-64:]
+            ):
                 try:
-                    os.write(fd, dmesg_command)
+                    os.write(fd, DMESG_COMMAND)
                 except OSError:
                     pass
                 dmesg_requested = True

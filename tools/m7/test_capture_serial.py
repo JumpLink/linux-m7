@@ -6,6 +6,7 @@ import unittest
 from unittest import mock
 
 from tools.m7.capture_serial import (
+    DMESG_COMMAND,
     HOST_PROBE_COMMANDS,
     close_tty,
     has_complete_dmesg,
@@ -20,6 +21,12 @@ class HostProbeCommandTest(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertLessEqual(len(command), 200)
                 self.assertNotIn(b"\n", command)
+
+
+class DmesgCommandTest(unittest.TestCase):
+    def test_command_ends_with_a_real_newline(self):
+        self.assertTrue(DMESG_COMMAND.endswith(b"\n"))
+        self.assertNotIn(b"\\n", DMESG_COMMAND)
 
 
 class CloseTtyTest(unittest.TestCase):
@@ -79,6 +86,16 @@ class DmesgCaptureTest(unittest.TestCase):
 
         self.assertFalse(has_complete_dmesg(data))
 
+    def test_prompt_prefixed_dmesg_block_is_accepted(self):
+        data = (
+            b"/ # M7_DMESG_BEGIN\n"
+            b"[    1.000000] kernel log\n"
+            b"/ # M7_DMESG_END\n"
+            b"/ # "
+        )
+
+        self.assertTrue(has_complete_dmesg(data))
+
 
 class ParseProbeTest(unittest.TestCase):
     def test_missing_probe_is_not_ready(self):
@@ -125,6 +142,24 @@ class ParseProbeTest(unittest.TestCase):
         self.assertTrue(ready)
         self.assertEqual(source, "initramfs")
         self.assertEqual(probe["M7_WLAN_PRESENT"], "no")
+
+    def test_prompt_prefixed_live_probe_is_accepted(self):
+        data = (
+            b"/ # M7_HOST_PROBE_BEGIN\n"
+            b"/ # M7_KERNEL=7.1.0-m7\n"
+            b"/ # M7_WLAN_PRESENT=no\n"
+            b"/ # / # M7_DEFERRED=\n"
+            b"/ # M7_HOST_PROBE_END\n"
+            b"/ # "
+        )
+
+        ready, probe, source = parse_probe(data)
+
+        self.assertTrue(ready)
+        self.assertEqual(source, "host")
+        self.assertEqual(probe["M7_KERNEL"], "7.1.0-m7")
+        self.assertEqual(probe["M7_WLAN_PRESENT"], "no")
+        self.assertEqual(probe["M7_DEFERRED"], "")
 
     def test_echoed_probe_command_is_not_a_live_probe(self):
         data = (

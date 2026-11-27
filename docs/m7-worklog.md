@@ -483,10 +483,22 @@ The OOB line value comes from `irq_get_irqchip_state()` with
 must not be treated as proof that the physical pin is low.
 
 The capture tool now sends 21 standalone probe commands, at most 113 bytes each.
-It waits for `M7_READY_END` or a fresh `/ #` prompt before sending them. Tests
-cover incomplete ready output, a complete marker block, a fresh prompt and the
-per-command size limit. The original Probe 90 dmesg is valid evidence; the original
-run manifest is not evidence of a complete live host probe.
+It waits for `M7_READY_END` or a fresh `/ #` prompt before sending them. The first
+interrupt is Ctrl-C followed by a newline, because Ctrl-C alone does not redraw an
+idle BusyBox prompt. The parser strips repeated `/ # ` prefixes before matching
+markers and keys. It still rejects echoed commands. The dmesg command now ends
+with a real newline and waits for a fresh prompt after the host probe.
+
+Tests cover incomplete ready output, a complete marker block, a fresh prompt,
+prompt-prefixed probe and dmesg blocks, the per-command size limit and the real
+dmesg newline. The original Probe 90 dmesg is valid evidence; the original run
+manifest is not evidence of a complete live host probe.
+
+Run `20261127T133051Z` completed the corrected live capture on the same image. Its
+25,887-byte serial log reports `ready=true`, `probe_source=host`,
+`M7_WLAN_PRESENT=no`, `dmesg_captured=true` and a final shell prompt. The extracted
+dmesg block is 24,777 bytes. This satisfies the live-probe capture requirement but
+not the WLAN success criterion.
 
 ## Current result
 
@@ -497,36 +509,34 @@ completes the firmware and p6 NVRAM download. Probe 89 releases the CR4 reset an
 sends the first control frame, but receives no response. Probe 90 ran on hardware
 and captured the timeout state. The device mailbox has response-side data, while
 the host reports no receive event and no brcmfmac interrupt. A complete live
-`M7_HOST_PROBE` is still required. `wlan0` is absent.
+`M7_HOST_PROBE` confirms that `wlan0` is absent. The shell remains responsive.
 
 ## Validation
 
-- 27 Python unit tests pass.
+- 30 Python unit tests pass.
 - Shell, Python syntax and `git diff --check` pass.
 - The Probe 90 kernel and DTB build passes without warnings.
 - `checkpatch --strict` reports no errors, warnings or checks for the Probe 90
   source diff.
 - Hardware validation uses the guarded `boot`-only flash path on HBOOT 1.61.
 - Probe 90 reached the ACM shell, returned `OKAY` from flash and reboot, and
-  produced a complete 25,158-byte dmesg block.
-- The complete live host probe remains outstanding. The initramfs snapshot and
-  saved dmesg do not satisfy the WLAN success criterion.
+  produced complete dmesg blocks.
+- The corrected capture produced one complete live host probe with a responsive
+  shell. It reports `M7_WLAN_PRESENT=no`, so WLAN validation remains open.
 
 ## Next steps
 
-1. Use the existing Probe 90 image and corrected capture path to obtain one
-   complete live host probe. Verify that the shell remains responsive.
-2. Trace PM8921 GPIO 38, the pinctrl configuration, PMIC IRQ delivery, CCCR
+1. Trace PM8921 GPIO 38, the pinctrl configuration, PMIC IRQ delivery, CCCR
    `SEPINT` and SDIO interrupt routing. Keep the temporary WLAN traces until the
    missing host interrupt is explained.
-3. Add a narrowly targeted diagnostic or a single-variable OOB fix only after a
+2. Add a narrowly targeted diagnostic or a single-variable OOB fix only after a
    physical FASTBOOT transition, lease check and `m7_ul` product guard.
-4. Require a complete live probe reporting `M7_WLAN_PRESENT=yes` before removing
+3. Require a complete live probe reporting `M7_WLAN_PRESENT=yes` before removing
    instrumentation or raising the SDIO clock.
-5. Raise the SDIO clock, then test 4-bit and high-speed operation only after
+4. Raise the SDIO clock, then test 4-bit and high-speed operation only after
    `wlan0` appears.
-6. Add network userspace tools, then verify an actual association.
-7. Continue with display, audio, Bluetooth and modem as separate milestones.
+5. Add network userspace tools, then verify an actual association.
+6. Continue with display, audio, Bluetooth and modem as separate milestones.
 
 See also:
 

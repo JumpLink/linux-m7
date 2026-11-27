@@ -6,8 +6,64 @@ import json
 import os
 import pathlib
 import select
+import signal
+import sys
 import termios
 import time
+
+
+class _CloseTimeout(Exception):
+    pass
+
+
+def close_tty(fd, timeout):
+    """Close a CDC ACM descriptor without waiting indefinitely for USB drain."""
+    if timeout <= 0:
+        raise ValueError("close timeout must be positive")
+
+    def interrupt_close(signum, frame):
+        raise _CloseTimeout
+
+    previous_handler = signal.signal(signal.SIGALRM, interrupt_close)
+    previous_timer = signal.getitimer(signal.ITIMER_REAL)
+    started = time.monotonic()
+    signal.setitimer(signal.ITIMER_REAL, timeout)
+    try:
+        os.close(fd)
+    except _CloseTimeout:
+        return False
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_timer[0] > 0:
+            remaining = max(0, previous_timer[0] - (time.monotonic() - started))
+            signal.setitimer(signal.ITIMER_REAL, remaining, previous_timer[1])
+    return True
+
+
+def parse_probe(data):
+    """Prefer the live host probe over the earlier initramfs snapshot."""
+    probe = {}
+    ready = False
+    source = None
+    for name, begin, end in (
+        ("host", b"M7_HOST_PROBE_BEGIN", b"M7_HOST_PROBE_END"),
+        ("initramfs", b"M7_READY_BEGIN", b"M7_READY_END"),
+    ):
+        if begin not in data or end not in data:
+            continue
+        block = data.split(begin, 1)[1].split(end, 1)[0]
+        for line in block.decode("utf-8", "replace").splitlines():
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            if key.startswith("M7_"):
+                probe[key] = value.strip()
+        ready = True
+        source = name
+        break
+    return ready, probe, source
 
 
 def main():
@@ -15,25 +71,43 @@ def main():
     parser.add_argument("tty")
     parser.add_argument("log")
     parser.add_argument("--duration", type=float, default=30)
+    parser.add_argument(
+        "--require-wlan",
+        action="store_true",
+        help="fail unless the live probe reports wlan0",
+    )
+    parser.add_argument(
+        "--close-timeout",
+        type=float,
+        default=1.0,
+        help="maximum seconds to wait for the final ACM close",
+    )
     args = parser.parse_args()
 
     fd = os.open(args.tty, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
     attrs = termios.tcgetattr(fd)
-    attrs[0] = 0
-    attrs[1] = 0
-    attrs[2] = termios.CS8 | termios.CREAD | termios.CLOCAL
-    attrs[3] = 0
-    attrs[4] = termios.B115200
-    attrs[5] = termios.B115200
-    attrs[6][termios.VMIN] = 0
-    attrs[6][termios.VTIME] = 0
-    termios.tcsetattr(fd, termios.TCSANOW, attrs)
+    desired = attrs.copy()
+    desired[6] = attrs[6].copy()
+    desired[0] = 0
+    desired[1] = 0
+    desired[2] = (
+        attrs[2] & ~(termios.CSIZE | termios.PARENB | termios.CSTOPB | termios.CRTSCTS)
+    ) | termios.CS8 | termios.CREAD | termios.CLOCAL
+    desired[3] = attrs[3] & ~(termios.ECHO | termios.ICANON | termios.IEXTEN)
+    desired[4] = termios.B115200
+    desired[5] = termios.B115200
+    desired[6][termios.VMIN] = 0
+    desired[6][termios.VTIME] = 0
+    if attrs != desired:
+        termios.tcsetattr(fd, termios.TCSANOW, desired)
 
     data = bytearray()
     probe = {}
     ready = False
+    probe_source = None
     started = time.monotonic()
-    next_probe = started
+    next_probe = started + 0.1
+    dmesg_requested = False
     log_path = pathlib.Path(args.log)
     probe_command = (
         b"echo M7_HOST_PROBE_BEGIN;"
@@ -65,50 +139,77 @@ def main():
         b" /sys/kernel/debug/devices_deferred 2>/dev/null | tr '\\n' ' ');"
         b"echo M7_HOST_PROBE_END\\n"
     )
+    dmesg_command = b"echo M7_DMESG_BEGIN; dmesg; echo M7_DMESG_END\\n"
 
     with log_path.open("wb", buffering=0) as log:
+        # A previous monitor may have left cat /proc/kmsg in the foreground.
+        # ISIG stays enabled so this interrupts that reader and returns the shell.
+        try:
+            os.write(fd, b"\x03")
+        except OSError:
+            pass
+
         while time.monotonic() - started < args.duration:
             now = time.monotonic()
-            if not ready and now >= next_probe:
+            if not (ready and probe_source == "host") and now >= next_probe:
                 try:
                     os.write(fd, probe_command)
-                except BlockingIOError:
+                except OSError:
                     pass
                 next_probe = now + 2
 
             readable, _, _ = select.select([fd], [], [], 0.2)
             if not readable:
                 continue
-            chunk = os.read(fd, 65536)
+            try:
+                chunk = os.read(fd, 65536)
+            except OSError:
+                break
             if not chunk:
                 break
             data.extend(chunk)
             log.write(chunk)
 
-            for begin, end in (
-                (b"M7_READY_BEGIN", b"M7_READY_END"),
-                (b"M7_HOST_PROBE_BEGIN", b"M7_HOST_PROBE_END"),
-            ):
-                if begin in data and end in data:
-                    block = data.split(begin, 1)[1].split(end, 1)[0]
-                    for line in block.decode("utf-8", "replace").splitlines():
-                        if "=" in line:
-                            key, value = line.split("=", 1)
-                            key = key.strip()
-                            if key.startswith("M7_"):
-                                probe[key] = value.strip()
-                    ready = True
-                    break
+            ready, probe, probe_source = parse_probe(data)
+            if probe_source == "host" and not dmesg_requested:
+                try:
+                    os.write(fd, dmesg_command)
+                except OSError:
+                    pass
+                dmesg_requested = True
 
-    os.close(fd)
+    try:
+        termios.tcflush(fd, termios.TCOFLUSH)
+    except OSError:
+        pass
+    closed = close_tty(fd, args.close_timeout)
+    if not closed:
+        print(
+            "warning: ACM close timed out; releasing the descriptor on exit",
+            file=sys.stderr,
+        )
+    wlan_ready = probe.get("M7_WLAN_PRESENT") == "yes"
+    dmesg_captured = (
+        b"M7_DMESG_BEGIN" in data
+        and b"M7_DMESG_END" in data
+        and data.index(b"M7_DMESG_BEGIN") < data.index(b"M7_DMESG_END")
+    )
     result = {
         "ready": ready,
+        "probe_source": probe_source,
+        "wlan_ready": wlan_ready,
         "probe": probe,
         "bytes": len(data),
+        "dmesg_captured": dmesg_captured,
+        "tty_closed": closed,
         "elapsed_seconds": round(time.monotonic() - started, 3),
     }
     pathlib.Path(args.log + ".json").write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))
+    if args.require_wlan and not (
+        ready and probe_source == "host" and wlan_ready
+    ):
+        return 1
     return 0
 
 

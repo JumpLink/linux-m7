@@ -14,9 +14,15 @@ tty_timeout=${M7_TTY_TIMEOUT:-30}
 serial=${FASTBOOT_SERIAL:-}
 method=${M7_BOOT_METHOD:-boot}
 partition=
+require_wlan=${M7_REQUIRE_WLAN:-0}
 
 if ! [[ "$tty_timeout" =~ ^[1-9][0-9]*$ ]]; then
 	echo "M7_TTY_TIMEOUT must be a positive integer" >&2
+	exit 1
+fi
+
+if [[ "$require_wlan" != 0 && "$require_wlan" != 1 ]]; then
+	echo "M7_REQUIRE_WLAN must be 0 or 1" >&2
 	exit 1
 fi
 
@@ -98,15 +104,32 @@ for _ in $(seq 1 $((tty_timeout * 10))); do
 done
 
 ready=false
+wlan_ready=false
+capture_rc=1
 if [ -n "$tty" ]; then
-	python3 "$root/tools/m7/capture_serial.py" "$tty" "$run/serial.log" \
-		--duration "$duration" > "$run/serial-summary.json"
-	if python3 -c 'import json,sys; sys.exit(not json.load(open(sys.argv[1]))["ready"])' \
+	capture_args=(--duration "$duration")
+	if [ "$require_wlan" = 1 ]; then
+		capture_args+=(--require-wlan)
+	fi
+	set +e
+	timeout "$(( ${duration%.*} + 10 ))s" \
+		python3 "$root/tools/m7/capture_serial.py" "$tty" "$run/serial.log" \
+		"${capture_args[@]}" > "$run/serial-summary.json"
+	capture_rc=$?
+	set -e
+	if [ -f "$run/serial.log.json" ] && \
+		python3 -c 'import json,sys; sys.exit(not json.load(open(sys.argv[1]))["ready"])' \
 		"$run/serial.log.json"; then
 		ready=true
 	fi
+	if [ -f "$run/serial.log.json" ] && \
+		python3 -c 'import json,sys; sys.exit(not json.load(open(sys.argv[1]))["wlan_ready"])' \
+		"$run/serial.log.json"; then
+		wlan_ready=true
+	fi
 else
-	echo '{"ready":false,"probe":{},"bytes":0,"elapsed_seconds":0}' > "$run/serial-summary.json"
+	echo '{"ready":false,"wlan_ready":false,"probe":{},"bytes":0,"elapsed_seconds":0}' \
+		> "$run/serial-summary.json"
 fi
 
 ended=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -115,7 +138,8 @@ lsusb > "$run/lsusb-after.txt"
 dump_fastboot > "$run/fastboot-after.txt" || true
 
 python3 - "$run" "$root" "$image" "$started" "$ended" "$elapsed" \
-	"$fastboot_rc" "$tty" "$ready" "$method" "$partition" "$fastboot_log" "$reboot_rc" <<'PY'
+	"$fastboot_rc" "$tty" "$ready" "$method" "$partition" "$fastboot_log" "$reboot_rc" \
+	"$capture_rc" "$wlan_ready" "$require_wlan" <<'PY'
 import json
 import pathlib
 import subprocess
@@ -123,11 +147,17 @@ import sys
 
 (
     run, root, image, started, ended, elapsed, fastboot_rc, tty, ready,
-    method, partition, fastboot_log, reboot_rc,
+    method, partition, fastboot_log, reboot_rc, capture_rc, wlan_ready,
+    require_wlan,
 ) = sys.argv[1:]
 run = pathlib.Path(run)
 root = pathlib.Path(root)
-summary = json.loads((run / "serial-summary.json").read_text())
+summary_path = run / "serial.log.json"
+summary = (
+    json.loads(summary_path.read_text())
+    if summary_path.exists()
+    else {"probe": {}}
+)
 commit = subprocess.run(
     ["git", "-C", str(root), "rev-parse", "HEAD"],
     text=True, capture_output=True, check=True,
@@ -157,6 +187,9 @@ manifest = {
         "reboot_returncode": int(reboot_rc) if reboot_rc else None,
         "serial_console": tty or None,
         "ready": ready == "true",
+        "capture_returncode": int(capture_rc),
+        "wlan_ready": wlan_ready == "true",
+        "require_wlan": require_wlan == "1",
         "probe": summary["probe"],
     },
     "artifacts": {
@@ -171,4 +204,4 @@ manifest = {
 PY
 
 cat "$run/run-manifest.json"
-[ "$ready" = true ]
+[ "$ready" = true ] && { [ "$require_wlan" != 1 ] || [ "$wlan_ready" = true ]; }

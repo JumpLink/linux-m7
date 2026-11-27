@@ -117,7 +117,12 @@ FASTBOOT_SERIAL=... DURATION=30 ./tools/m7/bench.sh build/m7/boot.img
 The bench waits up to 30 seconds for `/dev/ttyACM*`; override this with
 `M7_TTY_TIMEOUT` on slower HBOOT runs. It accepts the initramfs ready marker and
 also sends an `M7_HOST_PROBE` command to verify a responsive shell when the
-original marker was written before capture started.
+original marker was written before capture started. Set `M7_REQUIRE_WLAN=1` to
+fail unless that live probe reports `wlan0`.
+
+The serial monitor interrupts a stale foreground kernel-log reader, captures
+`dmesg` once after the live probe and bounds the final CDC ACM close. This keeps
+a blocked USB drain from adding about 32 seconds to every run.
 
 Keep the boot-image command line short. HBOOT 1.61 reported
 `Active cmdline overflow! (1047 Bytes)` for a 186-byte line containing a quoted

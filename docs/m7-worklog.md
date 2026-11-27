@@ -1005,6 +1005,44 @@ proven 1-bit bus.
    path is recorded.
 4. Continue with display, audio, Bluetooth and modem as separate milestones.
 
+### Display bringup plan (start here next)
+
+Display is the next milestone and needs several kernel rebuilds, so it does not
+fit a single fastboot window. The facts gathered from the kernel and the HTC
+Android tree:
+
+- The SoC has a mainline-supported MDP4 controller: `mdp:
+  display-controller@5100000` with `compatible = "qcom,mdp4"` in
+  `qcom-apq8064.dtsi`, and `dsi0`/`dsi0_phy` are present but `disabled`. The
+  mainline `drivers/gpu/drm/msm/disp/mdp4/` driver exists, so this is upstream
+  display, not a new driver.
+- `CONFIG_DRM_MSM` is not set in the defconfig. Enabling it (plus
+  `CONFIG_DRM_PANEL`, `CONFIG_BACKLIGHT_*`) is the first build.
+- The M7 panel is a JDI/Samsung 1080x1920 MIPI-DSI command-mode panel, 4 data
+  lanes, RGB888, 60 Hz. The HTC tree
+  `arch/arm/mach-msm/htc/m7/display/mipi_m7_1080p_pt.c` has the timings
+  (h_back_porch 27, h_front_porch 38, h_pulse 10, v_back 4, v_front 4,
+  v_pulse 2) and `mipi_m7.c` has the DCS init tables.
+- A command-mode panel needs a DSI panel driver carrying the exit-sleep and
+  gamma init sequences. Mainline has no m7 panel driver yet, so the first probe
+  should aim for the panel to at least exit sleep and show a solid fill, not a
+  full desktop.
+
+Ordered sub-steps, each its own probe:
+
+1. Enable `CONFIG_DRM_MSM` and friends, build, and confirm the msm DRM device
+   probes over the existing DSI/MDP4 nodes without a panel.
+2. Add a minimal DSI panel node with the JDI timings and a panel driver that
+   sends only exit-sleep, so the panel turns on.
+3. Add the full init gamma sequence and a backlight (PM8921 PWM or the panel
+   backlight command), then a solid-color test pattern from `/dev/fb0` or
+   `modetest`.
+4. Only after a stable image, wire the Synaptics touch to the display as a
+   separate step.
+
+The panel init tables stay derived from the HTC Android source and are not
+committed verbatim; only a minimal mainline-style panel driver is added.
+
 See also:
 
 - `docs/m7-upstream-candidates.md`

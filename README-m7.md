@@ -30,8 +30,10 @@ partition-6 NVRAM pass the read-back check, CR4 starts, and the MMC core deliver
 control responses through SDIO interrupt polling. A complete live `M7_HOST_PROBE`
 from the clean Probe 104 reports `M7_WLAN_PRESENT=yes`; the interface is down
 until userspace brings it up. The diagnostic image can carry static ARM
-`wpa_supplicant`, `wpa_cli` and `iw`; a live scan from Probe 105 returns BSS on
-2.4 GHz and 5 GHz, but association is not tested yet.
+`wpa_supplicant`, `wpa_cli` and `iw`; Probe 105 scans BSS on 2.4 GHz and 5 GHz
+and Probe 106 associates over WPA2-PSK, gets a DHCP lease and reaches the
+internet. The SDIO receive path still logs recoverable HW header checksum
+errors.
 
 Probes 91 and 92 isolated the old failure to OOB delivery. Active-high selection
 reached the chip as `SEPINT=0x07`, and removing the GPIO 38 pull did not help.
@@ -102,8 +104,9 @@ M7_WIFI_TOOLS_DIR="$PWD/build/m7/wifi-tools" \
 ```
 
 `wifi_tools.py` rejects missing, non-ARM, non-executable and dynamically linked
-tools before packaging. It also adds `ip`, `ifconfig`, `route`, `udhcpc`, `ping`,
-`wget` and `nc` BusyBox applets.
+tools before packaging. The initramfs also adds `ip`, `ifconfig`, `route`,
+`udhcpc`, `ping`, `wget` and `nc` BusyBox applets and the `udhcpc`
+`default.script` that applies a lease.
 
 A private test network can be embedded without putting credentials in the
 repository. The configuration must contain
@@ -134,6 +137,11 @@ ip addr show wlan0
 ip route
 ping -c 3 1.1.1.1
 ```
+
+`udhcpc` applies the lease with the packaged
+`/usr/share/udhcpc/default.script`, which sets the address, the default route
+and `resolv.conf`. A probe with a configuration therefore reaches the network
+after a single `udhcpc` call.
 
 Without a configuration, `iw dev wlan0 scan` still verifies scanning and
 regulatory behaviour without exposing a passphrase.

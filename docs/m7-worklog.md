@@ -792,7 +792,9 @@ only its presence, never its path, hash or contents. Credential-bearing builds
 are accepted only outside the checkout or under `build/`.
 
 The initramfs also exposes the BusyBox `ip`, `ifconfig`, `route`, `udhcpc`,
-`ping`, `wget` and `nc` applets. No hardware association has been attempted yet.
+`ping`, `wget` and `nc` applets, and it ships
+`/usr/share/udhcpc/default.script` so a `udhcpc` lease applies the address,
+the default route and `resolv.conf`. No association was attempted at that point.
 
 ### 2026-11-27: Probe 105 scans from the clean tools build
 
@@ -815,6 +817,30 @@ high-speed DTS, the diagnostic reboot and the watchdog pet. The image is
 The scan output stays outside the repository because it contains neighbouring
 SSIDs and device addresses.
 
+### 2026-11-27: Probe 106 associates and reaches the network
+
+Probe 106 uses the same kernel and DTB as Probe 105; only the initramfs adds a
+credential-bearing `/etc/wpa_supplicant.conf` built from the host's existing
+NetworkManager profile outside the repository. The image is 15,122,432 bytes
+with SHA-256
+`b4499394bc5f004055dac7720895ddfdf7f09226069ea13acc20934c21d4fc6f`, and the
+manifest records only `wpa_supplicant_config: true`.
+
+- The guarded flash of `boot` and the following reboot returned `OKAY`.
+- A complete late `M7_HOST_PROBE` at 101.43 s reports `M7_WLAN_PRESENT=yes`.
+- `wpa_supplicant` 2.11 associates and reports `wpa_state=COMPLETED`,
+  `key_mgmt=WPA2-PSK` and `pairwise_cipher=CCMP` on channel 1.
+- `udhcpc` obtains a lease, sets the address and the default route, and writes
+  `resolv.conf` from the lease.
+- `ping` reaches the gateway and the internet with 0 % loss, and `wget`
+  fetches a page over HTTP.
+- The SDIO receive path logs 8 `HW header checksum error` lines over the run;
+  the driver terminates or aborts those frames and keeps running.
+- After a long transfer burst the first ARP resolution failed. A
+  `wpa_cli reassociate` restored the link and 4/4 pings and `wget` succeeded
+  again, so the failure is recoverable rather than fatal.
+- `iw dev wlan0 link` reports 1.0 Mbit/s rates at -71 dBm.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
@@ -824,8 +850,10 @@ and CR4 startup work. Probe 93 completes brcmfmac initialization over MMC SDIO
 interrupt polling and a complete live `M7_HOST_PROBE` reports
 `M7_WLAN_PRESENT=yes`. The interface remains down. Optional static
 `wpa_supplicant`, `wpa_cli` and `iw` are packaged reproducibly, and Probe 105
-scans three BSS on 2.4 GHz and 5 GHz from the live shell; association is still
-untested. Active-high OOB and no-pull
+scans three BSS on 2.4 GHz and 5 GHz from the live shell. Probe 106 associates
+over WPA2-PSK, gets a DHCP lease and reaches the internet with ping and wget;
+the SDIO receive path logs recoverable HW header checksum errors. Active-high
+OOB and no-pull
 tests both failed before polling succeeded, so the remaining OOB fault is in
 signal delivery rather than the control frame. The bus now runs at 1 MHz
 and 1 bit with SD high-speed timing. Probe 101 proves the actual clock, clean
@@ -884,15 +912,18 @@ proven 1-bit bus.
   `1a9dcb0ed`. Its complete late probe reports `M7_WLAN_PRESENT=yes`, and
   `iw dev wlan0 scan` returns three BSS on 2.4 GHz and 5 GHz. The scan adds two
   recovered HW header checksum errors to the data path.
+- Probe 106 returned `OKAY` from flash and reboot from clean commit
+  `e0a0278de`. A late probe reports `M7_WLAN_PRESENT=yes`, `wpa_supplicant`
+  reaches `wpa_state=COMPLETED` over WPA2-PSK, `udhcpc` obtains a lease and
+  `ping` and `wget` reach the internet. A post-burst ARP failure recovers after
+  `wpa_cli reassociate`.
 
 ## Next steps
 
-1. Verify an actual association and DHCP only with the user's network and
-   credentials supplied outside the repository.
-2. Investigate the HW header checksum errors in the SDIO receive path before
-   expecting stable throughput.
-3. Investigate higher clock rates separately after userspace connectivity is
-   stable.
+1. Fix the SDIO receive-path HW header checksum errors before expecting stable
+   throughput at 1 MHz.
+2. Investigate the recoverable post-burst link stall that needs a reassociate.
+3. Investigate higher clock rates separately after the receive path is stable.
 4. Investigate OOB routing and MMCI SDIO IRQ support after the stable polling
    path is recorded.
 5. Continue with display, audio, Bluetooth and modem as separate milestones.

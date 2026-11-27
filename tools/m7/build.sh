@@ -143,6 +143,25 @@ cp "$busybox" "$initramfs/bin/busybox"
 for applet in sh mount mkdir ls head sleep ln echo cat uname dmesg hostname poweroff reboot grep tr cut ip ifconfig route udhcpc ping wget nc; do
 	ln -s busybox "$initramfs/bin/$applet"
 done
+
+# udhcpc needs a script: it applies the address, route and resolv.conf that the
+# lease carries. Without it a lease is obtained but nothing is configured.
+mkdir -p "$initramfs/usr/share/udhcpc"
+cat > "$initramfs/usr/share/udhcpc/default.script" <<'SCRIPT'
+#!/bin/sh
+case "$1" in
+bound|renew)
+	ip addr flush dev "$interface"
+	ip addr add "$ip/$mask" dev "$interface"
+	ip route add default via "$router" dev "$interface"
+	: > /etc/resolv.conf
+	for server in $dns; do
+		echo "nameserver $server" >> /etc/resolv.conf
+	done
+	;;
+esac
+SCRIPT
+chmod 0755 "$initramfs/usr/share/udhcpc/default.script"
 install -m 0755 "$root/tools/m7/initramfs/init" "$initramfs/init"
 install -m 0755 "$build/reboot-bootloader" "$initramfs/bin/reboot-bootloader"
 if [ "${M7_DIAGNOSTIC_REBOOT:-0}" = 1 ]; then

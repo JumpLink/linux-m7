@@ -344,7 +344,7 @@
 };
 
 &sdcc3 {
-	/delete-property/ cap-sd-highspeed;
+	cap-sd-highspeed;
 
 	#address-cells = <1>;
 	#size-cells = <0>;

@@ -57,7 +57,8 @@ Open risks:
 - Probes 98, 100 and 101 reach full WLAN initialization at actual 450 kHz,
   500 kHz and 1 MHz. Probe 102 confirms the clean 1 MHz image. Probe 103 offers
   4-bit mode, but `MMCICLOCK` remains at 1 bit and WLAN attaches without an SDIO
-  error. Keep 1 bit unless new evidence changes the CCCR capability path.
+  error. Probe 104 confirms SD high-speed timing on the same 1 MHz, 1-bit bus.
+  Keep 1 bit unless new evidence changes the CCCR capability path.
 
 ## 3. SDIO low-speed byte mode
 
@@ -164,7 +165,8 @@ S3202 touchscreen work. BCM4335 SDIO enumerates, enables Function 1, completes t
 firmware and confirmed partition-6 NVRAM download, starts CR4 and creates
 `wlan0`. Probe 102 uses MMC SDIO interrupt polling and reports
 `M7_WLAN_PRESENT=yes` on the clean 1 MHz, 1-bit image. Probe 103 offers 4 bits,
-but `MMCICLOCK` remains at 1 bit. Association is not tested.
+but `MMCICLOCK` remains at 1 bit. Probe 104 confirms SD high-speed timing on the
+same bus. Association is not tested.
 
 Probes 91 and 92 show that the OOB path still fails with Downstream's active-high
 selection and no PM8921 GPIO 38 pull. Probe 93 removes only the OOB entry and
@@ -182,8 +184,9 @@ Open risks:
   prove full WLAN initialization at actual 450 kHz, 500 kHz and 1 MHz after the
   table fix. Probe 102 confirms the clean image without temporary MMCI logging.
   Probe 103 keeps the controller at 1 bit even when the host offers 4 bits.
-- Test high-speed mode and association. Keep 1 bit unless new evidence changes
-  the CCCR capability path.
+- Probe 104 validates SD high-speed timing at 1 MHz and 1 bit. Test userspace
+  association, then higher clock rates separately. Keep 1 bit unless new
+  evidence changes the CCCR capability path.
 - Display, audio, Bluetooth, modem and cameras are not enabled.
 - The defconfig is intentionally headless and not a daily-driver
   configuration.

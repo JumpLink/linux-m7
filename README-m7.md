@@ -28,7 +28,7 @@ The imported basis is Linux 7.1.0 at upstream commit
 WLAN reaches `wlan0` on SDCC3 at 1 MHz and 1 bit. Firmware and the confirmed
 partition-6 NVRAM pass the read-back check, CR4 starts, and the MMC core delivers
 control responses through SDIO interrupt polling. A complete live `M7_HOST_PROBE`
-from the clean Probe 102 reports `M7_WLAN_PRESENT=yes`; the interface is down
+from the clean Probe 104 reports `M7_WLAN_PRESENT=yes`; the interface is down
 until userspace brings it up.
 
 Probes 91 and 92 isolated the old failure to OOB delivery. Active-high selection
@@ -49,10 +49,12 @@ removes all temporary MMCI `M7DBG` logging and confirms the clean 1 MHz image.
 Its complete dmesg has no SDCC3 command, data or timeout error. Probe 103 offers
 4-bit mode, but `MMCICLOCK` stays at 1 bit and WLAN still attaches without an
 SDIO error, consistent with a CCCR that advertises low speed without 4-bit
-block mode. The DTS keeps the proven 1-bit bus. The next timing test is
-high-speed mode. Association is not tested yet. Display, audio, Bluetooth,
-modem and cameras remain separate milestones. The camera has no mainline
-APQ8064 driver and is a separate long-term project.
+block mode. Probe 104 enables SD high-speed timing, reports
+`new high speed SDIO card`, and completes firmware, NVRAM, CR4 and the live
+`wlan0` probe without an SDCC3 error. `MMCICLOCK` remains at 1 bit. The DTS keeps
+the proven 1-bit bus at 1 MHz. Association is not tested yet. Display, audio,
+Bluetooth, modem and cameras remain separate milestones. The camera has no
+mainline APQ8064 driver and is a separate long-term project.
 
 The full history, current result and upstream candidates are recorded in
 `docs/m7-worklog.md`, `docs/m7-upstream-candidates.md` and

@@ -758,6 +758,22 @@ completes without an error while the controller remains at 1 bit. The remaining
 path is the BCM4335 CCCR capability check. This matches the earlier 2026-11-26
 4-bit failure. The DTS returns to the proven 1-bit setting.
 
+### 2026-11-27: Probe 104 validates SD high-speed timing
+
+Probe 104 changes only the DTS from deleting `cap-sd-highspeed` to enabling it.
+The clock stays at 1 MHz, the bus stays at 1 bit, and firmware, p6 NVRAM and
+extracted initramfs contents remain unchanged. Its `boot.img` SHA-256 is
+`e6d7d15710ef68a03fea28ceb88e6f16231e83bec25d9ca23c95dc0e2f9ae327`.
+
+Run `20261127T192434Z` verified `product: m7_ul`, flashed only `boot` through the
+lease, and rebooted. SDCC3 is `mmc0` at `0x12180000` and reports
+`new high speed SDIO card at address 0001`. Firmware completes at 9.342 s, p6
+NVRAM at 9.354 s, CR4 starts and `attach_done` follows at 10.491 s. The complete
+late probe at 54.09 s reports `M7_WLAN_PRESENT=yes` and `M7_WLAN_STATE=down`.
+A read of `MMCICLOCK` returns `0x00000001`, so the controller still uses 1 bit.
+The complete dmesg block has 737 lines and no SDCC3 command, data or timeout
+error. The early `mmc1` hardware-reset error belongs to eMMC at `0x12400000`.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
@@ -768,10 +784,11 @@ interrupt polling and a complete live `M7_HOST_PROBE` reports
 `M7_WLAN_PRESENT=yes`. The interface remains down. Active-high OOB and no-pull
 tests both failed before polling succeeded, so the remaining OOB fault is in
 signal delivery rather than the control frame. The bus now runs at 1 MHz
-and 1 bit. Probe 101 proves the actual clock, clean Probe 102 confirms full WLAN
-initialization after all temporary `M7DBG` MMCI logging is removed, and Probe
-103 shows that offering 4 bits does not change the controller width. The DTS
-keeps the proven 1-bit bus.
+and 1 bit with SD high-speed timing. Probe 101 proves the actual clock, clean
+Probe 102 confirms full WLAN initialization after all temporary `M7DBG` MMCI
+logging is removed, Probe 103 shows that offering 4 bits does not change the
+controller width, and Probe 104 validates high-speed timing. The DTS keeps the
+proven 1-bit bus.
 
 ## Validation
 
@@ -814,19 +831,21 @@ keeps the proven 1-bit bus.
 - Probe 103 returned `OKAY` from flash and reboot with the host offering 4 bits.
   Its complete late probe and dmesg capture report `M7_WLAN_PRESENT=yes` and no
   SDCC3 error. `MMCICLOCK` remains at 1 bit, so 4-bit mode is not accepted.
+- Probe 104 returned `OKAY` from flash and reboot with SD high-speed enabled.
+  Its complete late probe and dmesg capture report `new high speed SDIO card`,
+  `M7_WLAN_PRESENT=yes` and no SDCC3 error. `MMCICLOCK` remains at 1 bit.
 
 ## Next steps
 
-1. Build Probe 104 at 1 MHz, 1 bit and SD high-speed as a single-variable change.
-2. Transition the M7 physically to FASTBOOT, check the lease and verify the
-   `m7_ul` product guard.
-3. Flash only `boot`, then require a complete live probe and one complete dmesg
-   block with `M7_WLAN_PRESENT=yes` and no SDCC3 error.
-4. Read `MMCICLOCK` and the SDIO timing state, then add network userspace tools
-   and verify an actual association.
-5. Investigate OOB routing and MMCI SDIO IRQ support after the stable polling
+1. Add optional ARM network userspace tools to the diagnostic initramfs without
+   storing network credentials in the repository.
+2. Build a probe with the validated 1 MHz, 1-bit, high-speed DTS, scan from the
+   live shell, and verify an actual association only with the user's network.
+3. Investigate higher clock rates separately after userspace connectivity is
+   stable.
+4. Investigate OOB routing and MMCI SDIO IRQ support after the stable polling
    path is recorded.
-6. Continue with display, audio, Bluetooth and modem as separate milestones.
+5. Continue with display, audio, Bluetooth and modem as separate milestones.
 
 See also:
 

@@ -1290,8 +1290,19 @@ static void mmci_start_data(struct mmci_host *host, struct mmc_data *data)
 	if (!mmci_dma_start(host, datactrl))
 		return;
 
+	/* Probe-only: which path a transfer actually took. */
+	if (host->mmc->card && mmc_card_sdio(host->mmc->card))
+		pr_info("M7_MMC_TRACE: sdio_data dir=%d size=%u dma=yes clock=%u width=%u\n",
+			!!(data->flags & MMC_DATA_READ), host->size,
+			host->mmc->ios.clock, host->mmc->ios.bus_width);
+
 	/* IRQ mode, map the SG list for CPU reading/writing */
 	mmci_init_sg(host, data);
+
+	if (host->mmc->card && mmc_card_sdio(host->mmc->card))
+		pr_info("M7_MMC_TRACE: sdio_data dir=%d size=%u dma=no clock=%u width=%u\n",
+			!!(data->flags & MMC_DATA_READ), host->size,
+			host->mmc->ios.clock, host->mmc->ios.bus_width);
 
 	if (data->flags & MMC_DATA_READ) {
 		irqmask = MCI_RXFIFOHALFFULLMASK;

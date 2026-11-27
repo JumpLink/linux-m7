@@ -1399,10 +1399,10 @@ static int brcmf_sdio_hdparse(struct brcmf_sdio *bus, u8 *header,
 		 * failure at 1 MHz and byte mode looks like a device fault.
 		 */
 		pr_info("M7_WLAN_TRACE: badhdr raw=%02x %02x %02x %02x len=%u cks=%04x "
-			"rxhdr=%d clock=%u width=%u timing=%u\n",
+			"rxhdr=%d rxdata=%d clock=%u width=%u timing=%u\n",
 			raw[0], raw[1], raw[2], raw[3], len, checksum,
-			bus->sdcnt.f2rxhdrs, host->ios.clock,
-			host->ios.bus_width, host->ios.timing);
+			bus->sdcnt.f2rxhdrs, bus->sdcnt.f2rxdata,
+			host->ios.clock, host->ios.bus_width, host->ios.timing);
 		brcmf_err("HW header checksum error\n");
 		bus->sdcnt.rx_badhdr++;
 		brcmf_sdio_rxfail(bus, false, false);

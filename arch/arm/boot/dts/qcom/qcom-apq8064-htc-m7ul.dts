@@ -191,7 +191,7 @@
 
 &pm8921_gpio {
 	pinctrl-names = "default";
-	pinctrl-0 = <&wlan_reg_on_pin>;
+	pinctrl-0 = <&wlan_reg_on_pin>, <&wlan_host_wake_pin>;
 
 	wlan_reg_on_pin: wlan-reg-on-pin {
 		pins = "gpio16";
@@ -200,6 +200,12 @@
 		drive-push-pull;
 		qcom,drive-strength = <PMIC_GPIO_STRENGTH_LOW>;
 		power-source = <PM8921_GPIO_S4>;
+	};
+
+	wlan_host_wake_pin: wlan-host-wake-pin {
+		pins = "gpio38";
+		function = "normal";
+		bias-disable;
 	};
 };
 

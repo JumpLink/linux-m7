@@ -364,8 +364,7 @@ reset vector but before the cfg80211 device is registered.
 The p14 extractor included adjacent radio-partition strings, partial keys and
 duplicate `ccode` entries, so p14 is no longer the active input. The confirmed
 p6 range is 815 bytes with 45 CRLF key/value lines and a trailing NUL. Probe 89
-uses that raw p6 block and adds traces after the CR4 reset release, around the
-first F1 access, F2/IRQ setup, control responses, attach and bus start.
+uses that raw p6 block.
 
 The serial monitor now prefers a complete live host probe over the earlier
 initramfs snapshot. It interrupts a stale foreground `/proc/kmsg` reader,
@@ -381,32 +380,43 @@ attach and bus start. The markers report stages, lengths and error codes only;
 they do not log firmware, NVRAM, control packets, MAC addresses or device
 identifiers. They will be removed after the failing stage is identified.
 
+Probe 89 is built from `04de87aae` as kernel `7.1.0-g04de87aae3b2`. Its
+`boot.img` SHA-256 is
+`803cb873f536ca6b57adbeec960caf6cae9f7fb8aac7ca001eaf8f79ee86ea94`, and the
+artifacts are staged under `/tmp/opencode/m7-wlan-probe-89/`. The embedded stock
+firmware and p6 NVRAM hashes match the selected inputs. No phone write or reboot
+has occurred for this probe: the lease currently finds no M7 fastboot endpoint,
+and the existing ACM endpoint returns zero bytes. The hardware run is pending a
+physical FASTBOOT transition.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
 Pstore across failed boots, returns automatically to TWRP and runs the
 Synaptics touchscreen. WLAN enumerates the BCM4335, enables Function 1 and
 completes the firmware and NVRAM download. Probe 88 wrote the CR4 reset vector
-without a subsequent timeout, but `wlan0` still did not appear. Probe 89 will
-locate the next missing stage with the confirmed p6 NVRAM.
+without a subsequent timeout, but `wlan0` still did not appear. Probe 89 is built
+and staged with the confirmed p6 NVRAM; its hardware trace run is still pending.
 
 ## Validation
 
 - 20 Python unit tests pass.
 - Shell and Python syntax checks pass.
-- DTB builds pass without new warnings.
+- The probe-89 kernel and DTB build passes without warnings.
 - `checkpatch.pl` reports 0 errors and 0 warnings for the current diff.
 - Hardware validation uses the guarded `boot`-only flash path on HBOOT 1.61.
 
 ## Next steps
 
-1. Boot probe 89 and require a complete live host probe with one captured
-   `dmesg` block.
-2. Use the new trace stages to find the first failure after CR4 reset release.
-3. Raise the SDIO clock in steps after the 400 kHz firmware path is stable.
-4. Re-enable 4-bit and high-speed SDIO only after 1-bit operation is stable.
-5. Add network userspace tools, then verify an actual association.
-6. Continue with display, audio, Bluetooth and modem as separate milestones.
+1. Recover an M7 fastboot endpoint through a physical FASTBOOT transition; do
+   not force the unreliable Linux reboot magic.
+2. Under the lease and product guard, flash only `boot`, require a complete live
+   host probe and capture one `dmesg` block.
+3. Use the new trace stages to find the first failure after CR4 reset release.
+4. Raise the SDIO clock in steps after the 400 kHz firmware path is stable.
+5. Re-enable 4-bit and high-speed SDIO only after 1-bit operation is stable.
+6. Add network userspace tools, then verify an actual association.
+7. Continue with display, audio, Bluetooth and modem as separate milestones.
 
 See also:
 

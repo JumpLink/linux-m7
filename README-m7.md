@@ -31,11 +31,14 @@ after about 25 s. Firmware and NVRAM writes pass a complete read-back check.
 Probe 89 uses the confirmed raw NVRAM range from partition 6. It completes the
 download, releases the CR4 reset and sends the first control frame, but receives
 no response within 2.568 s. No OOB interrupt was observed. `wlan0` is not created
-yet. Probe 90 adds a timeout snapshot of the F1 interrupt, mailbox and frame
-state, the OOB GPIO line and raw SDCC3 registers. That build still needs a
-hardware run. Display, audio, Bluetooth, modem and cameras remain separate
-milestones. The camera has no mainline APQ8064 driver and is a separate long-term
-project.
+yet. Probe 90 ran on the phone and captured a complete kernel log. At the control
+timeout, the device mailbox contains `tohostmailbox=4`, but the host has no receive
+activity and no brcmfmac interrupt. IRQ 57 remains absent. A complete live
+`M7_HOST_PROBE` is still missing because the first capture sent a command line
+longer than BusyBox could accept. The capture tool now sends 21 short commands
+only after init or a fresh shell prompt appears. Display, audio, Bluetooth, modem
+and cameras remain separate milestones. The camera has no mainline APQ8064 driver
+and is a separate long-term project.
 
 The full history, current result and upstream candidates are recorded in
 `docs/m7-worklog.md`, `docs/m7-upstream-candidates.md` and
@@ -122,9 +125,12 @@ also sends an `M7_HOST_PROBE` command to verify a responsive shell when the
 original marker was written before capture started. Set `M7_REQUIRE_WLAN=1` to
 fail unless that live probe reports `wlan0`.
 
-The serial monitor interrupts a stale foreground kernel-log reader, captures
-`dmesg` once after the live probe and bounds the final CDC ACM close. This keeps
-a blocked USB drain from adding about 32 seconds to every run.
+The serial monitor interrupts a stale foreground kernel-log reader, waits for the
+initramfs ready marker or a fresh shell prompt, then sends 21 separate probe
+commands. Each command is at most 113 bytes, so BusyBox does not truncate the
+combined line. It captures `dmesg` once after the live probe and bounds the final
+CDC ACM close. This keeps a blocked USB drain from adding about 32 seconds to every
+run.
 
 Keep the boot-image command line short. HBOOT 1.61 reported
 `Active cmdline overflow! (1047 Bytes)` for a 186-byte line containing a quoted

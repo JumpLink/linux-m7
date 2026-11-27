@@ -448,7 +448,45 @@ still uncommitted at build time. The `boot.img` SHA-256 is
 `19e55ceb92918c5127fee0912389b11be2faa58620256900096fd4534acfcacf`.
 Artifacts are staged under `/tmp/opencode/m7-wlan-probe-90/`. The firmware and
 NVRAM hashes read back from the packaged initramfs match the selected inputs.
-The probe has not been flashed or booted yet.
+A physical FASTBOOT transition then allowed a lease-guarded `boot` flash. Fastboot
+reported `OKAY` for the write and reboot.
+
+The phone reached the initramfs shell and the watchdog kept it alive. The first
+capture is invalid. The old tool sent its 1.4 KiB probe before `M7_READY_END`, so
+the input interleaved with the initramfs output. BusyBox ash also truncated the
+long command line. The original run manifest therefore remains a failure record,
+not a successful live probe.
+
+A later capture saved a complete 25,158-byte dmesg block in `live-dmesg.log`. It
+ends with `M7_DMESG_END` and a fresh `/ #` prompt. The kernel trace confirms the
+firmware and p6 NVRAM writes, CR4 reset release, F1/F2 setup, OOB registration and
+the first 36-byte control transmit. The receive wait runs from 20.690121 s to
+23.199949 s with `condition=0`, `pending=0` and `rxlen=0`.
+
+The timeout snapshot separates device activity from host delivery:
+
+- `intrcount=0`, `pollcnt=0`, `f1=0` and `f2rxh=0`: brcmfmac saw no receive event.
+- `oob_irq=57`, `oob_line=0`, `oob_err=0`: the OOB request succeeded, but the
+  nested IRQ was not observed.
+- `intstatus=208000c0`, `hostintmask=200000f0`, `intmask=c701ff0f` and
+  `funcintmask=1`: interrupt state is present on the device side.
+- `tosbmailbox=0`, `tohostmailbox=4`, `tohostdata=00040008`: the response-side
+  mailbox is populated. This weakens a stopped-CR4 explanation but does not by
+  itself prove that a complete control response was written.
+- `rframebc=0`, `framectrl=0`, `clkcsr=c2`: no host frame count is visible and the
+  clock request is active.
+- SDCC3 remains at 400 kHz in 1-bit mode. The controller has no active command or
+  data transfer, an empty FIFO and `datacnt=0`.
+
+The OOB line value comes from `irq_get_irqchip_state()` with
+`IRQCHIP_STATE_LINE_LEVEL`. It is not a direct PM8921 GPIO register read, so it
+must not be treated as proof that the physical pin is low.
+
+The capture tool now sends 21 standalone probe commands, at most 113 bytes each.
+It waits for `M7_READY_END` or a fresh `/ #` prompt before sending them. Tests
+cover incomplete ready output, a complete marker block, a fresh prompt and the
+per-command size limit. The original Probe 90 dmesg is valid evidence; the original
+run manifest is not evidence of a complete live host probe.
 
 ## Current result
 
@@ -456,28 +494,35 @@ The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
 Pstore across failed boots, returns automatically to TWRP and runs the
 Synaptics touchscreen. WLAN enumerates the BCM4335, enables Function 1 and
 completes the firmware and p6 NVRAM download. Probe 89 releases the CR4 reset and
-sends the first control frame, but receives no response. Probe 90 is built with a
-read-only timeout snapshot and still needs its hardware run. `wlan0` is absent.
+sends the first control frame, but receives no response. Probe 90 ran on hardware
+and captured the timeout state. The device mailbox has response-side data, while
+the host reports no receive event and no brcmfmac interrupt. A complete live
+`M7_HOST_PROBE` is still required. `wlan0` is absent.
 
 ## Validation
 
-- 23 Python unit tests pass.
+- 27 Python unit tests pass.
 - Shell, Python syntax and `git diff --check` pass.
 - The Probe 90 kernel and DTB build passes without warnings.
 - `checkpatch --strict` reports no errors, warnings or checks for the Probe 90
   source diff.
 - Hardware validation uses the guarded `boot`-only flash path on HBOOT 1.61.
+- Probe 90 reached the ACM shell, returned `OKAY` from flash and reboot, and
+  produced a complete 25,158-byte dmesg block.
+- The complete live host probe remains outstanding. The initramfs snapshot and
+  saved dmesg do not satisfy the WLAN success criterion.
 
 ## Next steps
 
-1. Obtain a physical FASTBOOT transition, recheck the lease and `m7_ul` product
-   guard, and flash only the Probe 90 `boot` image.
-2. Require one complete live host probe and one complete dmesg block. Use the
-   first missing trace and the timeout register snapshot to separate CR4, IRQ
-   and SDIO receive-path failures.
-3. Compare p6 with a minimal NVRAM only if the snapshot does not isolate the
-   cause.
-4. Remove the temporary WLAN traces after identifying the root cause.
+1. Use the existing Probe 90 image and corrected capture path to obtain one
+   complete live host probe. Verify that the shell remains responsive.
+2. Trace PM8921 GPIO 38, the pinctrl configuration, PMIC IRQ delivery, CCCR
+   `SEPINT` and SDIO interrupt routing. Keep the temporary WLAN traces until the
+   missing host interrupt is explained.
+3. Add a narrowly targeted diagnostic or a single-variable OOB fix only after a
+   physical FASTBOOT transition, lease check and `m7_ul` product guard.
+4. Require a complete live probe reporting `M7_WLAN_PRESENT=yes` before removing
+   instrumentation or raising the SDIO clock.
 5. Raise the SDIO clock, then test 4-bit and high-speed operation only after
    `wlan0` appears.
 6. Add network userspace tools, then verify an actual association.

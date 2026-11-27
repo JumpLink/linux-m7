@@ -16,6 +16,34 @@ class _CloseTimeout(Exception):
     pass
 
 
+# BusyBox ash truncates a serial input line at roughly 1 KiB on the M7. Keep
+# every probe command independently executable instead of building one long
+# shell line that the console silently cuts in half.
+HOST_PROBE_COMMANDS = (
+    b"echo M7_HOST_PROBE_BEGIN",
+    b"echo M7_KERNEL=$(uname -r)",
+    b"echo M7_CMDLINE=$(cat /proc/cmdline)",
+    b"echo M7_DT_MODEL=$(cat /proc/device-tree/model)",
+    b"echo M7_DT_COMPATIBLE=$(tr '\\0' ' ' < /proc/device-tree/compatible)",
+    b"echo M7_UPTIME=$(cut -d' ' -f1 /proc/uptime)",
+    b"echo M7_UDC=$(ls /sys/class/udc | head -n1)",
+    b"echo M7_UDC_STATE=$(cat /sys/class/udc/*/state 2>/dev/null)",
+    b"grep -q mmcblk /proc/partitions && echo M7_EMMC_PRESENT=yes || echo M7_EMMC_PRESENT=no",
+    b"ls /sys/bus/i2c/devices/*-0020 >/dev/null 2>&1 && echo M7_TOUCH_PRESENT=yes || echo M7_TOUCH_PRESENT=no",
+    b"echo M7_TOUCH_DRIVER=$(cat /sys/bus/i2c/devices/*-0020/uevent 2>/dev/null | grep '^DRIVER=' | cut -d= -f2)",
+    b"echo M7_INPUT_DEVICES=$(ls /sys/class/input 2>/dev/null | tr '\\n' ' ')",
+    b"echo M7_INPUT_NAMES=$(grep '^N: Name=' /proc/bus/input/devices 2>/dev/null | tr '\\n' ' ')",
+    b"test -d /sys/class/net/wlan0 && echo M7_WLAN_PRESENT=yes || echo M7_WLAN_PRESENT=no",
+    b"echo M7_WLAN_STATE=$(cat /sys/class/net/wlan0/operstate 2>/dev/null)",
+    b"test -d /sys/bus/amba/devices/12180000.mmc && echo M7_SDCC3_PRESENT=yes || echo M7_SDCC3_PRESENT=no",
+    b"echo M7_SDCC3_DRIVER=$(cat /sys/bus/amba/devices/12180000.mmc/uevent 2>/dev/null | grep '^DRIVER=' | cut -d= -f2)",
+    b"echo M7_MMC_HOSTS=$(ls /sys/class/mmc_host 2>/dev/null | tr '\\n' ' ')",
+    b"mount -t debugfs none /sys/kernel/debug 2>/dev/null",
+    b"echo M7_DEFERRED=$(grep -E '12180000|wlan|mmc' /sys/kernel/debug/devices_deferred 2>/dev/null | tr '\\n' ' ')",
+    b"echo M7_HOST_PROBE_END",
+)
+
+
 def close_tty(fd, timeout):
     """Close a CDC ACM descriptor without waiting indefinitely for USB drain."""
     if timeout <= 0:
@@ -58,6 +86,13 @@ def complete_block(data, begin, end):
 def has_complete_dmesg(data):
     """Return whether one complete delimited kernel-log block was captured."""
     return complete_block(data, b"M7_DMESG_BEGIN", b"M7_DMESG_END") is not None
+
+
+def shell_ready(data):
+    """Return whether init finished or the interactive shell published a prompt."""
+    if complete_block(data, b"M7_READY_BEGIN", b"M7_READY_END") is not None:
+        return True
+    return b"/ #" in data[-512:]
 
 
 def parse_probe(data):
@@ -125,39 +160,10 @@ def main():
     ready = False
     probe_source = None
     started = time.monotonic()
-    next_probe = started + 0.1
+    next_probe = None
     dmesg_requested = False
     log_path = pathlib.Path(args.log)
-    probe_command = (
-        b"echo M7_HOST_PROBE_BEGIN;"
-        b"echo M7_KERNEL=$(uname -r);"
-        b"echo M7_CMDLINE=$(cat /proc/cmdline);"
-        b"echo M7_DT_MODEL=$(cat /proc/device-tree/model);"
-        b"echo M7_DT_COMPATIBLE=$(tr '\\0' ' ' < /proc/device-tree/compatible);"
-        b"echo M7_UPTIME=$(cut -d' ' -f1 /proc/uptime);"
-        b"echo M7_UDC=$(ls /sys/class/udc | head -n1);"
-        b"echo M7_UDC_STATE=$(cat /sys/class/udc/*/state 2>/dev/null);"
-        b"grep -q mmcblk /proc/partitions && echo M7_EMMC_PRESENT=yes || echo M7_EMMC_PRESENT=no;"
-        b"ls /sys/bus/i2c/devices/*-0020 >/dev/null 2>&1 &&"
-        b" echo M7_TOUCH_PRESENT=yes || echo M7_TOUCH_PRESENT=no;"
-        b"echo M7_TOUCH_DRIVER=$(cat /sys/bus/i2c/devices/*-0020/uevent"
-        b" 2>/dev/null | grep '^DRIVER=' | cut -d= -f2);"
-        b"echo M7_INPUT_DEVICES=$(ls /sys/class/input 2>/dev/null | tr '\\n' ' ');"
-        b"echo M7_INPUT_NAMES=$(grep '^N: Name=' /proc/bus/input/devices"
-        b" 2>/dev/null | tr '\\n' ' ');"
-        b"test -d /sys/class/net/wlan0 && echo M7_WLAN_PRESENT=yes ||"
-        b" echo M7_WLAN_PRESENT=no;"
-        b"echo M7_WLAN_STATE=$(cat /sys/class/net/wlan0/operstate 2>/dev/null);"
-        b"test -d /sys/bus/amba/devices/12180000.mmc &&"
-        b" echo M7_SDCC3_PRESENT=yes || echo M7_SDCC3_PRESENT=no;"
-        b"echo M7_SDCC3_DRIVER=$(cat /sys/bus/amba/devices/12180000.mmc/uevent"
-        b" 2>/dev/null | grep '^DRIVER=' | cut -d= -f2);"
-        b"echo M7_MMC_HOSTS=$(ls /sys/class/mmc_host 2>/dev/null | tr '\\n' ' ');"
-        b"mount -t debugfs none /sys/kernel/debug 2>/dev/null;"
-        b"echo M7_DEFERRED=$(grep -E '12180000|wlan|mmc'"
-        b" /sys/kernel/debug/devices_deferred 2>/dev/null | tr '\\n' ' ');"
-        b"echo M7_HOST_PROBE_END\\n"
-    )
+    probe_command = b"\n".join(HOST_PROBE_COMMANDS) + b"\n"
     dmesg_command = b"echo M7_DMESG_BEGIN; dmesg; echo M7_DMESG_END\\n"
 
     with log_path.open("wb", buffering=0) as log:
@@ -170,7 +176,13 @@ def main():
 
         while time.monotonic() - started < args.duration:
             now = time.monotonic()
-            if not (ready and probe_source == "host") and now >= next_probe:
+            if next_probe is None and shell_ready(data):
+                next_probe = now + 0.1
+            if (
+                next_probe is not None
+                and not (ready and probe_source == "host")
+                and now >= next_probe
+            ):
                 try:
                     os.write(fd, probe_command)
                 except OSError:

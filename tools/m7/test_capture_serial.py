@@ -5,7 +5,21 @@ import time
 import unittest
 from unittest import mock
 
-from tools.m7.capture_serial import close_tty, has_complete_dmesg, parse_probe
+from tools.m7.capture_serial import (
+    HOST_PROBE_COMMANDS,
+    close_tty,
+    has_complete_dmesg,
+    parse_probe,
+    shell_ready,
+)
+
+
+class HostProbeCommandTest(unittest.TestCase):
+    def test_each_probe_line_fits_the_busybox_console_buffer(self):
+        for command in HOST_PROBE_COMMANDS:
+            with self.subTest(command=command):
+                self.assertLessEqual(len(command), 200)
+                self.assertNotIn(b"\n", command)
 
 
 class CloseTtyTest(unittest.TestCase):
@@ -27,6 +41,21 @@ class CloseTtyTest(unittest.TestCase):
             self.assertTrue(close_tty(42, 0.05))
 
         close.assert_called_once_with(42)
+
+
+class ShellReadyTest(unittest.TestCase):
+    def test_incomplete_initramfs_output_is_not_ready(self):
+        data = b"HTC One M7, mainline Linux\nM7_READY_BEGIN\nM7_KERNEL=7.1.0-m7\n"
+
+        self.assertFalse(shell_ready(data))
+
+    def test_complete_initramfs_output_is_ready(self):
+        data = b"M7_READY_BEGIN\nM7_KERNEL=7.1.0-m7\nM7_READY_END\n"
+
+        self.assertTrue(shell_ready(data))
+
+    def test_fresh_shell_prompt_is_ready(self):
+        self.assertTrue(shell_ready(b"sh: can't access tty; job control turned off\n/ # "))
 
 
 class DmesgCaptureTest(unittest.TestCase):

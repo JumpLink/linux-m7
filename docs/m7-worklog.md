@@ -601,6 +601,22 @@ No firmware or control-frame trace runs. This isolates an early SDIO transfer
 failure at 1 MHz. The DTS returns to the proven 400 kHz setting; Probe 95 will
 test 500 kHz as the next single-variable clock step.
 
+### 2026-11-27: Probe 95 fails at 500 kHz
+
+Probe 95 changes only `max-frequency` from 400 kHz to 500 kHz. The kernel payload,
+firmware, p6 NVRAM and extracted initramfs contents are identical to Probe 93.
+Its `boot.img` SHA-256 is
+`6dd145cd9316e230bafee664edfd992e75187245ece7d1b703f2ed7b4d9ad58e`.
+
+Run `20261127T172904Z` verified `product: m7_ul`, flashed only `boot` through the
+lease, and rebooted. The complete late probe at 78.05 s reports
+`M7_WLAN_PRESENT=no`. SDCC3 still creates the SDIO card, but Functions 1, 2 and 3
+all fail with `-84` at 0.748 s. No firmware or control-frame trace runs. This is
+the same early failure as Probe 94, now at 500 kHz.
+
+The DTS returns to the proven 400 kHz setting. Probe 96 will test 450 kHz to
+narrow the clock boundary without changing bus width, transfer mode or pins.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
@@ -630,10 +646,12 @@ and 1 bit.
   completion is not used as validation.
 - Probe 94 returned `OKAY` from flash and reboot. Its complete late probe and
   dmesg capture report `M7_WLAN_PRESENT=no` and an early `-84` brcmfmac failure.
+- Probe 95 returned `OKAY` from flash and reboot. Its complete late probe and
+  dmesg capture report `M7_WLAN_PRESENT=no` and the same early `-84` failure.
 
 ## Next steps
 
-1. Build Probe 95 with only `max-frequency = <500000>` changed from Probe 93.
+1. Build Probe 96 with only `max-frequency = <450000>` changed from Probe 93.
 2. Transition the M7 physically to FASTBOOT, check the lease and verify the
    `m7_ul` product guard.
 3. Flash only `boot`, then require a complete live probe and dmesg capture with

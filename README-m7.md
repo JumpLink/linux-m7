@@ -39,10 +39,11 @@ advertise `MMC_CAP_SDIO_IRQ`, so the MMC core polls `SDIO_CCCR_INTx` and calls
 the registered SDIO function handler. That path consumes the responses and
 finishes brcmfmac initialization.
 
-The next single-variable test raises the SDCC3 clock to 1 MHz. Association is not
-tested yet. Display, audio, Bluetooth, modem and cameras remain separate
-milestones. The camera has no mainline APQ8064 driver and is a separate long-term
-project.
+A 1 MHz SDCC3 test failed before firmware download with `-84` (`EILSEQ`), so the
+stable clock remains 400 kHz. The next single-variable test uses 500 kHz.
+Association is not tested yet. Display, audio, Bluetooth, modem and cameras remain
+separate milestones. The camera has no mainline APQ8064 driver and is a separate
+long-term project.
 
 The full history, current result and upstream candidates are recorded in
 `docs/m7-worklog.md`, `docs/m7-upstream-candidates.md` and

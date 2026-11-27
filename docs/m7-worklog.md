@@ -586,6 +586,21 @@ SDIO IRQ support, so the MMC core polls `SDIO_CCCR_INTx` and dispatches the SDIO
 function handler. OOB delivery remains broken on this board, but polling is a
 working fallback.
 
+### 2026-11-27: Probe 94 fails at 1 MHz
+
+Probe 94 changes only `max-frequency` from 400 kHz to 1 MHz. The kernel payload,
+firmware, p6 NVRAM and extracted initramfs contents are identical to Probe 93.
+Its `boot.img` SHA-256 is
+`edaf2ffd3da2815a20e513e7cd91f76e65ca6325405c8eff2106b2a138cd909f`.
+
+Run `20261127T165849Z` verified `product: m7_ul`, flashed only `boot` through the
+lease, and rebooted successfully. The complete late probe at 80.97 s reports
+`M7_WLAN_PRESENT=no`. The full dmesg block shows that SDCC3 still enumerates the
+card, but all brcmfmac SDIO functions fail with `-84` before firmware download.
+No firmware or control-frame trace runs. This isolates an early SDIO transfer
+failure at 1 MHz. The DTS returns to the proven 400 kHz setting; Probe 95 will
+test 500 kHz as the next single-variable clock step.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
@@ -613,16 +628,18 @@ and 1 bit.
 - Probe 93 returned `OKAY` from flash and reboot. A later complete live probe and
   dmesg capture report `M7_WLAN_PRESENT=yes`. The early capture before brcmfmac
   completion is not used as validation.
+- Probe 94 returned `OKAY` from flash and reboot. Its complete late probe and
+  dmesg capture report `M7_WLAN_PRESENT=no` and an early `-84` brcmfmac failure.
 
 ## Next steps
 
-1. Build Probe 94 with only `max-frequency = <1000000>` changed from Probe 93.
+1. Build Probe 95 with only `max-frequency = <500000>` changed from Probe 93.
 2. Transition the M7 physically to FASTBOOT, check the lease and verify the
    `m7_ul` product guard.
 3. Flash only `boot`, then require a complete live probe and dmesg capture with
    `M7_WLAN_PRESENT=yes` before keeping the higher clock.
-4. Test 10 MHz and 25 MHz separately if 1 MHz passes. Revert to 400 kHz on a
-   transfer or command timeout.
+4. Increase the clock in separate steps only while each step passes. Revert to
+   400 kHz on a transfer or command failure.
 5. Test 4-bit mode, then high-speed mode as separate changes after the clock is
    stable.
 6. Add network userspace tools and verify an actual association.

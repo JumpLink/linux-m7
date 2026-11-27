@@ -1387,6 +1387,22 @@ static int brcmf_sdio_hdparse(struct brcmf_sdio *bus, u8 *header,
 		return -ENODATA;
 	}
 	if ((u16)(~(len ^ checksum))) {
+		struct mmc_host *host = bus->sdiodev->func1->card->host;
+		u8 raw[4];
+		u32 ios;
+
+		memcpy_fromio(raw, header, sizeof(raw));
+		memcpy(&ios, &host->ios, sizeof(ios));
+		/*
+		 * The header is rejected, but the reason is only visible with
+		 * the raw bytes and the host timing. Without them a checksum
+		 * failure at 1 MHz and byte mode looks like a device fault.
+		 */
+		pr_info("M7_WLAN_TRACE: badhdr raw=%02x %02x %02x %02x len=%u cks=%04x "
+			"rxhdr=%d clock=%u width=%u timing=%u\n",
+			raw[0], raw[1], raw[2], raw[3], len, checksum,
+			bus->sdcnt.f2rxhdrs, host->ios.clock,
+			host->ios.bus_width, host->ios.timing);
 		brcmf_err("HW header checksum error\n");
 		bus->sdcnt.rx_badhdr++;
 		brcmf_sdio_rxfail(bus, false, false);

@@ -1340,11 +1340,14 @@ static bool brcmf_chip_cr4_set_active(struct brcmf_chip_priv *chip, u32 rstvec)
 {
 	struct brcmf_core *core;
 
+	pr_info("M7_WLAN_TRACE: cr4_activate rstvec=%x\n", rstvec);
 	chip->ops->activate(chip->ctx, &chip->pub, rstvec);
+	pr_info("M7_WLAN_TRACE: cr4_activate_done\n");
 
 	/* restore ARM */
 	core = brcmf_chip_get_core(&chip->pub, BCMA_CORE_ARM_CR4);
 	brcmf_chip_resetcore(core, ARMCR4_BCMA_IOCTL_CPUHALT, 0, 0);
+	pr_info("M7_WLAN_TRACE: cr4_reset_released\n");
 
 	return true;
 }

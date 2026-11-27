@@ -1205,6 +1205,7 @@ static int brcmf_bus_started(struct brcmf_pub *drvr, struct cfg80211_ops *ops)
 	struct brcmf_if *p2p_ifp;
 
 	brcmf_dbg(TRACE, "\n");
+	pr_info("M7_WLAN_TRACE: bus_start_enter\n");
 
 	/* add primary networking interface */
 	ifp = brcmf_add_if(drvr, 0, 0, false, "wlan%d",
@@ -1219,17 +1220,20 @@ static int brcmf_bus_started(struct brcmf_pub *drvr, struct cfg80211_ops *ops)
 
 	/* do bus specific preinit here */
 	ret = brcmf_bus_preinit(bus_if);
+	pr_info("M7_WLAN_TRACE: bus_preinit ret=%d\n", ret);
 	if (ret < 0)
 		goto fail;
 
 	/* Bus is ready, do any initialization */
 	ret = brcmf_c_preinit_dcmds(ifp);
+	pr_info("M7_WLAN_TRACE: preinit_dcmds ret=%d\n", ret);
 	if (ret < 0)
 		goto fail;
 
 	brcmf_feat_attach(drvr);
 
 	ret = brcmf_proto_init_done(drvr);
+	pr_info("M7_WLAN_TRACE: proto_init_done ret=%d\n", ret);
 	if (ret < 0)
 		goto fail;
 
@@ -1237,12 +1241,14 @@ static int brcmf_bus_started(struct brcmf_pub *drvr, struct cfg80211_ops *ops)
 
 	drvr->config = brcmf_cfg80211_attach(drvr, ops,
 					     drvr->settings->p2p_enable);
+	pr_info("M7_WLAN_TRACE: cfg80211_attach config=%d\n", !!drvr->config);
 	if (drvr->config == NULL) {
 		ret = -ENOMEM;
 		goto fail;
 	}
 
 	ret = brcmf_net_attach(ifp, false);
+	pr_info("M7_WLAN_TRACE: net_attach ret=%d\n", ret);
 
 	if ((!ret) && (drvr->settings->p2p_enable)) {
 		p2p_ifp = drvr->iflist[1];
@@ -1279,9 +1285,11 @@ static int brcmf_bus_started(struct brcmf_pub *drvr, struct cfg80211_ops *ops)
 	brcmf_proto_debugfs_create(drvr);
 	brcmf_bus_debugfs_create(bus_if);
 
+	pr_info("M7_WLAN_TRACE: bus_start_ready\n");
 	return 0;
 
 fail:
+	pr_info("M7_WLAN_TRACE: bus_start_failed ret=%d\n", ret);
 	bphy_err(drvr, "failed: %d\n", ret);
 	if (drvr->config) {
 		brcmf_cfg80211_detach(drvr->config);

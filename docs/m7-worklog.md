@@ -372,7 +372,14 @@ initramfs snapshot. It interrupts a stale foreground `/proc/kmsg` reader,
 requests one delimited `dmesg` block after the live probe and bounds the final
 CDC ACM close. Flushing pending TTY output removed a 32-second
 `tty_wait_until_sent` delay; a real two-second capture now closes in 2.004 s.
-The initramfs no longer writes its own extra `dmesg` block.
+The initramfs no longer writes its own extra `dmesg` block. Marker-order
+regression tests reject an incomplete or reversed `dmesg` block.
+
+Probe 89 adds temporary `M7_WLAN_TRACE` markers at the CR4 reset release, the
+first post-reset F1 read, F2 and interrupt setup, control transmit/receive waits,
+attach and bus start. The markers report stages, lengths and error codes only;
+they do not log firmware, NVRAM, control packets, MAC addresses or device
+identifiers. They will be removed after the failing stage is identified.
 
 ## Current result
 
@@ -385,7 +392,7 @@ locate the next missing stage with the confirmed p6 NVRAM.
 
 ## Validation
 
-- 17 Python unit tests pass.
+- 20 Python unit tests pass.
 - Shell and Python syntax checks pass.
 - DTB builds pass without new warnings.
 - `checkpatch.pl` reports 0 errors and 0 warnings for the current diff.

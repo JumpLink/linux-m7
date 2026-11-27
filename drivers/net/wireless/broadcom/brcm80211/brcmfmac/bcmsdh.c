@@ -64,6 +64,7 @@ static irqreturn_t brcmf_sdiod_oob_irqhandler(int irq, void *dev_id)
 	struct brcmf_bus *bus_if = dev_get_drvdata(dev_id);
 	struct brcmf_sdio_dev *sdiodev = bus_if->bus_priv.sdio;
 
+	pr_info_once("M7_WLAN_TRACE: oob_irq_seen\n");
 	brcmf_dbg(INTR, "OOB intr triggered\n");
 
 	/* out-of-band interrupt is level-triggered which won't
@@ -102,6 +103,8 @@ int brcmf_sdiod_intr_register(struct brcmf_sdio_dev *sdiodev)
 	u32 addr, gpiocontrol;
 
 	pdata = &sdiodev->settings->bus.sdio;
+	pr_info("M7_WLAN_TRACE: irq_register_enter oob=%d\n",
+		pdata->oob_irq_supported);
 	if (pdata->oob_irq_supported) {
 		brcmf_dbg(SDIO, "Enter, register OOB IRQ %d\n",
 			  pdata->oob_irq_nr);
@@ -111,6 +114,8 @@ int brcmf_sdiod_intr_register(struct brcmf_sdio_dev *sdiodev)
 		ret = request_irq(pdata->oob_irq_nr, brcmf_sdiod_oob_irqhandler,
 				  pdata->oob_irq_flags, "brcmf_oob_intr",
 				  &sdiodev->func1->dev);
+		pr_info("M7_WLAN_TRACE: oob_request irq=%d err=%d\n",
+			pdata->oob_irq_nr, ret);
 		if (ret != 0) {
 			brcmf_err("request_irq failed %d\n", ret);
 			return ret;
@@ -162,6 +167,7 @@ int brcmf_sdiod_intr_register(struct brcmf_sdio_dev *sdiodev)
 		sdiodev->sd_irq_requested = true;
 	}
 
+	pr_info("M7_WLAN_TRACE: irq_register_exit io_err=%d\n", ret);
 	return 0;
 }
 

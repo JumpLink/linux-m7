@@ -1731,6 +1731,8 @@ static int brcmf_sdio_dcmd_resp_wait(struct brcmf_sdio *bus, uint *condition,
 	DECLARE_WAITQUEUE(wait, current);
 	int timeout = DCMD_RESP_TIMEOUT;
 
+	*pending = false;
+	pr_info("M7_WLAN_TRACE: ctrl_wait_enter condition=%u\n", *condition);
 	/* Wait until control frame is available */
 	add_wait_queue(&bus->dcmd_resp_wait, &wait);
 	set_current_state(TASK_INTERRUPTIBLE);
@@ -1743,6 +1745,8 @@ static int brcmf_sdio_dcmd_resp_wait(struct brcmf_sdio *bus, uint *condition,
 
 	set_current_state(TASK_RUNNING);
 	remove_wait_queue(&bus->dcmd_resp_wait, &wait);
+	pr_info("M7_WLAN_TRACE: ctrl_wait_done condition=%u timeout=%d pending=%d\n",
+		*condition, timeout, *pending);
 
 	return timeout;
 }
@@ -2940,8 +2944,12 @@ brcmf_sdio_bus_txctl(struct device *dev, unsigned char *msg, uint msglen)
 	int ret;
 
 	brcmf_dbg(TRACE, "Enter\n");
-	if (sdiodev->state != BRCMF_SDIOD_DATA)
+	pr_info("M7_WLAN_TRACE: txctl_enter len=%u state=%d\n", msglen,
+		sdiodev->state);
+	if (sdiodev->state != BRCMF_SDIOD_DATA) {
+		pr_info("M7_WLAN_TRACE: txctl_bad_state ret=-EIO\n");
 		return -EIO;
+	}
 
 	/* Send from dpc */
 	bus->ctrl_frame_buf = msg;
@@ -2974,6 +2982,7 @@ brcmf_sdio_bus_txctl(struct device *dev, unsigned char *msg, uint msglen)
 	else
 		bus->sdcnt.tx_ctlpkts++;
 
+	pr_info("M7_WLAN_TRACE: txctl_done ret=%d\n", ret);
 	return ret;
 }
 
@@ -3288,6 +3297,8 @@ brcmf_sdio_bus_rxctl(struct device *dev, unsigned char *msg, uint msglen)
 	else
 		bus->sdcnt.rx_ctlerrs++;
 
+	pr_info("M7_WLAN_TRACE: rxctl_done rxlen=%u timeleft=%d pending=%d\n",
+		rxlen, timeleft, pending);
 	return rxlen ? (int)rxlen : -ETIMEDOUT;
 }
 
@@ -3395,9 +3406,11 @@ static int brcmf_sdio_download_firmware(struct brcmf_sdio *bus,
 
 	rstvec = get_unaligned_le32(fw->data);
 	brcmf_dbg(SDIO, "firmware rstvec: %x\n", rstvec);
+	pr_info("M7_WLAN_TRACE: fw_download_enter\n");
 
 	bcmerror = brcmf_sdio_download_code_file(bus, fw);
 	release_firmware(fw);
+	pr_info("M7_WLAN_TRACE: fw_code_done err=%d\n", bcmerror);
 	if (bcmerror) {
 		brcmf_err("dongle image file download failed\n");
 		brcmf_fw_nvram_free(nvram);
@@ -3406,17 +3419,21 @@ static int brcmf_sdio_download_firmware(struct brcmf_sdio *bus,
 
 	bcmerror = brcmf_sdio_download_nvram(bus, nvram, nvlen);
 	brcmf_fw_nvram_free(nvram);
+	pr_info("M7_WLAN_TRACE: nvram_done err=%d\n", bcmerror);
 	if (bcmerror) {
 		brcmf_err("dongle nvram file download failed\n");
 		goto err;
 	}
 
 	/* Take arm out of reset */
+	pr_info("M7_WLAN_TRACE: arm_reset_enter\n");
 	if (!brcmf_chip_set_active(bus->ci, rstvec)) {
+		pr_info("M7_WLAN_TRACE: arm_reset_failed\n");
 		brcmf_err("error getting out of ARM core reset\n");
 		bcmerror = -EIO;
 		goto err;
 	}
+	pr_info("M7_WLAN_TRACE: arm_reset_done\n");
 
 err:
 	brcmf_sdio_clkctl(bus, CLK_SDONLY, false);
@@ -4220,6 +4237,7 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 	u8 devctl;
 
 	brcmf_dbg(TRACE, "Enter: dev=%s, err=%d\n", dev_name(dev), err);
+	pr_info("M7_WLAN_TRACE: fw_callback err=%d\n", err);
 
 	if (err)
 		goto fail;
@@ -4233,6 +4251,7 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 	/* try to download image and nvram to the dongle */
 	bus->alp_only = true;
 	err = brcmf_sdio_download_firmware(bus, code, nvram, nvram_len);
+	pr_info("M7_WLAN_TRACE: fw_download_done err=%d\n", err);
 	if (err)
 		goto fail;
 	bus->alp_only = false;
@@ -4245,11 +4264,14 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 
 	/* Make sure backplane clock is on, needed to generate F2 interrupt */
 	brcmf_sdio_clkctl(bus, CLK_AVAIL, false);
+	pr_info("M7_WLAN_TRACE: clk_ready state=%d\n", bus->clkstate);
 	if (bus->clkstate != CLK_AVAIL)
 		goto release;
 
 	/* Force clocks on backplane to be sure F2 interrupt propagates */
 	saveclk = brcmf_sdiod_readb(sdiod, SBSDIO_FUNC1_CHIPCLKCSR, &err);
+	pr_info("M7_WLAN_TRACE: f1_post_reset err=%d clkcsr=%02x\n", err,
+		saveclk);
 	if (!err) {
 		bpreq = saveclk;
 		bpreq |= brcmf_chip_is_ulp(bus->ci) ?
@@ -4267,6 +4289,7 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 			   SDPCM_PROT_VERSION << SMB_DATA_VERSION_SHIFT, NULL);
 
 	err = sdio_enable_func(sdiod->func2);
+	pr_info("M7_WLAN_TRACE: f2_enable err=%d\n", err);
 
 	brcmf_dbg(INFO, "enable F2: err=%d\n", err);
 
@@ -4276,6 +4299,7 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 		bus->hostintmask = HOSTINTMASK;
 		brcmf_sdiod_writel(sdiod, core->base + SD_REG(hostintmask),
 				   bus->hostintmask, NULL);
+		pr_info("M7_WLAN_TRACE: f2_hostintmask=%x\n", bus->hostintmask);
 
 		switch (sdiod->func1->device) {
 		case SDIO_DEVICE_ID_BROADCOM_43751:
@@ -4376,8 +4400,10 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 
 		/* Allow full data communication using DPC from now on. */
 		brcmf_sdiod_change_state(bus->sdiodev, BRCMF_SDIOD_DATA);
+		pr_info("M7_WLAN_TRACE: bus_data_state=%d\n", bus->sdiodev->state);
 
 		err = brcmf_sdiod_intr_register(sdiod);
+		pr_info("M7_WLAN_TRACE: irq_register err=%d\n", err);
 		if (err != 0)
 			brcmf_err("intr register failed:%d\n", err);
 	}
@@ -4391,19 +4417,23 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 	sdio_release_host(sdiod->func1);
 
 	err = brcmf_alloc(sdiod->dev, sdiod->settings);
+	pr_info("M7_WLAN_TRACE: alloc_done err=%d\n", err);
 	if (err) {
 		brcmf_err("brcmf_alloc failed\n");
 		goto claim;
 	}
 
 	/* Attach to the common layer, reserve hdr space */
+	pr_info("M7_WLAN_TRACE: attach_enter\n");
 	err = brcmf_attach(sdiod->dev);
+	pr_info("M7_WLAN_TRACE: attach_done err=%d\n", err);
 	if (err != 0) {
 		brcmf_err("brcmf_attach failed\n");
 		goto free;
 	}
 
 	/* ready */
+	pr_info("M7_WLAN_TRACE: fw_callback_ready\n");
 	return;
 
 free:
@@ -4415,6 +4445,7 @@ checkdied:
 release:
 	sdio_release_host(sdiod->func1);
 fail:
+	pr_info("M7_WLAN_TRACE: fw_callback_failed err=%d\n", err);
 	brcmf_dbg(TRACE, "failed: dev=%s, err=%d\n", dev_name(dev), err);
 	device_release_driver(&sdiod->func2->dev);
 	device_release_driver(dev);

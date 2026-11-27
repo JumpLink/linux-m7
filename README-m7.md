@@ -28,11 +28,11 @@ The imported basis is Linux 7.1.0 at upstream commit
 WLAN has a bootable checkpoint: SDCC3 recognizes the BCM4335 and enables
 Function 1 at 400 kHz. A first-boot watchdog pet keeps the phone from resetting
 after about 25 s. Firmware and NVRAM writes pass a complete read-back check.
-The generic LibreELEC NVRAM still ends in `err=-110`; a device-local M7 NVRAM
-candidate completes the reset-vector path without that error, but `wlan0` is
-not created yet. The candidate needs a cleaner extraction from the radio
-partition. Display, audio, Bluetooth, modem and cameras remain separate
-milestones.
+The generic LibreELEC NVRAM still ends in `err=-110`. A confirmed raw NVRAM
+range from partition 6 completes the reset-vector path without that error, but
+`wlan0` is not created yet. Probe 89 adds targeted startup traces to locate the
+remaining failure before cfg80211 registration. Display, audio, Bluetooth,
+modem and cameras remain separate milestones.
 The camera has no mainline APQ8064 driver and is a separate long-term project.
 
 The full history, current result and upstream candidates are recorded in

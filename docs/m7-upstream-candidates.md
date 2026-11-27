@@ -159,13 +159,15 @@ Candidate: submit the board in stages as subsystems become stable.
 
 Current evidence: eMMC, USB ACM, Pstore, automatic Recovery and Synaptics
 S3202 touchscreen work. BCM4335 SDIO enumerates, enables Function 1 and
-completes the firmware and NVRAM download in about 19.7 s. The CM3 core is
-released, then the USB connection drops before `wlan0` becomes operational.
+completes the firmware and NVRAM download. Mainline writes the CR4 reset
+vector, but both the generic LibreELEC image and HTC's stock firmware time out
+before `wlan0` becomes operational.
 
 Open risks:
 
-- The post-reset CM3 path ends in a silent USB disconnect, and an M7 NVRAM
-  remains unresolved.
+- The post-reset CR4 path ends in a silent USB disconnect. The non-debug
+  firmware verifier is a no-op, so Dongle RAM still needs a read-back check.
+- An M7 NVRAM remains unresolved.
 - Display, audio, Bluetooth, modem and cameras are not enabled.
 - The defconfig is intentionally headless and not a daily-driver
   configuration.

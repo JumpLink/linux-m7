@@ -283,13 +283,41 @@ The trace patch is kept outside the tree at
 step is a post-reset pstore capture and a check of the CM3 reset/clock path,
 not another controller-size experiment.
 
+### 2026-11-27: stock firmware reaches the same post-reset timeout
+
+Probe 82 replaced the generic LibreELEC image with HTC's stock
+`fw_bcm4335_b0.bin` and kept the NVRAM and SDIO path unchanged. The stock image
+is firmware 6.37.35.0; the generic image is 6.30.171.24. The code areas differ,
+so this was a real firmware test rather than a header-only swap.
+
+The stock image completed 17 transfers of 32768 bytes, a final 31221-byte
+transfer, the 1832-byte NVRAM transfer and the 4-byte reset-vector write. At
+23.04 s the first control receive timed out:
+
+- `brcmf_sdio_bus_rxctl: resumed on timeout`
+- `brcmf_bus_started: failed: -110`
+- `brcmf_attach: dongle is not responding: err=-110`
+
+The ACM connection disappeared at 25.82 s and `wlan0` never appeared. There
+was no new pstore panic. The firmware choice is therefore not the immediate
+cause.
+
+The reset-vector write also settles the core type. Mainline takes the CR4 path,
+which writes the vector to address zero and releases reset with CPUHALT clear.
+Public BCM4335 enumeration logs report ARM CR4 core ID `0x83e`, matching this
+path. The older HTC brcmfmac source's CM3 reset calls do not describe this
+hardware. The next probe reads the downloaded firmware and NVRAM back from
+Dongle RAM and compares every byte before reset; the normal non-debug build
+currently skips that verification.
+
 ## Current result
 
 The port boots Mainline Linux to a USB CDC ACM shell, detects eMMC, preserves
 Pstore across failed boots, returns automatically to TWRP and runs the
 Synaptics touchscreen. WLAN enumerates the BCM4335, enables Function 1 and
-completes the firmware and NVRAM download. The CM3 core is then released, but
-the device drops the USB connection before `wlan0` becomes operational.
+completes the firmware and NVRAM download. The CR4 reset vector is written,
+but both tested firmware images leave the dongle unresponsive before `wlan0`
+becomes operational.
 
 ## Validation
 

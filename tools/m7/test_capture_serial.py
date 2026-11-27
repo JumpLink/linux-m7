@@ -5,7 +5,7 @@ import time
 import unittest
 from unittest import mock
 
-from tools.m7.capture_serial import close_tty, parse_probe
+from tools.m7.capture_serial import close_tty, has_complete_dmesg, parse_probe
 
 
 class CloseTtyTest(unittest.TestCase):
@@ -27,6 +27,23 @@ class CloseTtyTest(unittest.TestCase):
             self.assertTrue(close_tty(42, 0.05))
 
         close.assert_called_once_with(42)
+
+
+class DmesgCaptureTest(unittest.TestCase):
+    def test_complete_block_is_accepted(self):
+        data = b"M7_DMESG_BEGIN\nkernel log\nM7_DMESG_END\n"
+
+        self.assertTrue(has_complete_dmesg(data))
+
+    def test_missing_end_is_rejected(self):
+        data = b"M7_DMESG_BEGIN\nkernel log\n"
+
+        self.assertFalse(has_complete_dmesg(data))
+
+    def test_end_before_begin_is_rejected(self):
+        data = b"M7_DMESG_END\nkernel log\nM7_DMESG_BEGIN\n"
+
+        self.assertFalse(has_complete_dmesg(data))
 
 
 class ParseProbeTest(unittest.TestCase):

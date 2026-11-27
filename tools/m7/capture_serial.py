@@ -41,6 +41,15 @@ def close_tty(fd, timeout):
     return True
 
 
+def has_complete_dmesg(data):
+    """Return whether one complete delimited kernel-log block was captured."""
+    begin = data.find(b"M7_DMESG_BEGIN")
+    if begin < 0:
+        return False
+    end = data.find(b"M7_DMESG_END", begin + len(b"M7_DMESG_BEGIN"))
+    return end >= 0
+
+
 def parse_probe(data):
     """Prefer the live host probe over the earlier initramfs snapshot."""
     probe = {}
@@ -189,11 +198,7 @@ def main():
             file=sys.stderr,
         )
     wlan_ready = probe.get("M7_WLAN_PRESENT") == "yes"
-    dmesg_captured = (
-        b"M7_DMESG_BEGIN" in data
-        and b"M7_DMESG_END" in data
-        and data.index(b"M7_DMESG_BEGIN") < data.index(b"M7_DMESG_END")
-    )
+    dmesg_captured = has_complete_dmesg(data)
     result = {
         "ready": ready,
         "probe_source": probe_source,

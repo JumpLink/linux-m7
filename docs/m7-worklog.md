@@ -1114,6 +1114,28 @@ is therefore expected for this panel-less probe, but it must not prevent the
 MDP4/DSI host from probing. Board tests guard the endpoints, status, supply
 assignment, voltage constraints and the disabled GPU.
 
+### 2026-11-28: Probe 113 boots the MDP4/DSI host path
+
+Probe 113 was built from clean commit `7c746fea3`. Its 15,663,104-byte `boot.img`
+has SHA-256 `0d03b2adefaa33ba5e604dabeeea0a576e3bef63e48c5c5a93f4933dd4c6e6b6`.
+The ARMv7 build completed without compiler warnings or errors, all 50 Python
+tests passed, and the compiled DTB verified the reciprocal endpoints, enabled
+DSI0/PHY, L2/LVS5/LVS7 supplies, absent AVDD and disabled GPU.
+
+The lease-protected flash wrote only `boot` and rebooted successfully. The ACM
+shell was ready at uptime 2.57 seconds and the device remained stable beyond
+160 seconds. The first host probe reported `M7_WLAN_PRESENT=no`; live diagnostics
+showed `wlan0` and all three SDIO functions bound to `brcmfmac` shortly afterward.
+A repeated complete late host probe at uptime 160.76 reported
+`M7_WLAN_PRESENT=yes`, so the WLAN criterion is met.
+
+`4700000.dsi`, `4700200.phy` and `5100000.display-controller` are bound to
+`msm_dsi`, `msm_dsi_phy` and `mdp4`. There is still no DRM `card*` or
+`/sys/kernel/debug/dri/0`: `dsi_bind()` requires a panel or bridge on the DSI
+output port, so the panel-less aggregate cannot finish binding. The next probe
+adds the minimal JDI panel node and driver; the host/PHY bring-up itself no
+longer crashes.
+
 See also:
 
 - `docs/m7-upstream-candidates.md`

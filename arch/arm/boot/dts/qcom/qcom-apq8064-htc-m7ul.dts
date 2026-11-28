@@ -164,6 +164,22 @@
 		};
 	};
 
+	panel_backlight_pin: panel-backlight-state {
+		pins = "gpio86";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+		output-low;
+	};
+
+	panel_reset_pin: panel-reset-state {
+		pins = "gpio31";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+		output-low;
+	};
+
 	wlan_sdcc3_pins: wlan-sdcc3-pins {
 		clk-pins {
 			groups = "sdc3_clk";
@@ -191,7 +207,8 @@
 
 &pm8921_gpio {
 	pinctrl-names = "default";
-	pinctrl-0 = <&wlan_reg_on_pin>, <&wlan_host_wake_pin>;
+	pinctrl-0 = <&wlan_reg_on_pin>, <&wlan_host_wake_pin>,
+		    <&panel_p5v_en_pin>, <&panel_n5v_en_pin>;
 
 	wlan_reg_on_pin: wlan-reg-on-pin {
 		pins = "gpio16";
@@ -206,6 +223,26 @@
 		pins = "gpio38";
 		function = "normal";
 		bias-disable;
+	};
+
+	panel_p5v_en_pin: panel-p5v-en-state {
+		pins = "gpio37";
+		function = "normal";
+		bias-disable;
+		drive-push-pull;
+		output-low;
+		qcom,drive-strength = <PMIC_GPIO_STRENGTH_LOW>;
+		power-source = <PM8921_GPIO_S4>;
+	};
+
+	panel_n5v_en_pin: panel-n5v-en-state {
+		pins = "gpio36";
+		function = "normal";
+		bias-disable;
+		drive-push-pull;
+		output-low;
+		qcom,drive-strength = <PMIC_GPIO_STRENGTH_LOW>;
+		power-source = <PM8921_GPIO_S4>;
 	};
 };
 
@@ -418,6 +455,32 @@
 	vdda-supply = <&pm8921_l2>;
 	vddio-supply = <&pm8921_lvs5>;
 	status = "okay";
+
+	panel@0 {
+		compatible = "htc,m7ul-panel";
+		reg = <0>;
+		vdd-supply = <&pm8921_l2>;
+		vddio-supply = <&pm8921_lvs5>;
+		clocks = <&rpmcc RPM_XO_D0>;
+		clock-names = "xo";
+		reset-gpios = <&tlmm_pinmux 31 GPIO_ACTIVE_LOW>;
+		/* Downstream maps positive boost to GPIO 37 and negative to GPIO 36. */
+		vdd5v-en-gpios = <&pm8921_gpio 37 GPIO_ACTIVE_HIGH>;
+		vddn5v-en-gpios = <&pm8921_gpio 36 GPIO_ACTIVE_HIGH>;
+		backlight-gpios = <&tlmm_pinmux 86 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&panel_backlight_pin>, <&panel_reset_pin>;
+
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&dsi0_out>;
+			};
+		};
+	};
+};
+
+&dsi0_out {
+	remote-endpoint = <&panel_in>;
 };
 
 &dsi0_phy {

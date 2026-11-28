@@ -40,6 +40,8 @@ not duplicated in this public repository; the workspace maps roles to models in
 | 2026-11-28 | main implementation session | KOSTENLOS / public | Fix MSM IOMMU domain ownership | Completed; release the legacy ARM DMA mapping before MSM attach, with 76 tests and a clean GCC 16 object build; Probe 116 hardware test pending |
 | 2026-11-28 | main implementation session | KOSTENLOS / public | Recover and diagnose Probe 116 | Completed; Probe 109 preserved a SHA-verified 1 MiB Pstore dump, exposing recursive legacy DMA cleanup during old-domain teardown |
 | 2026-11-28 | main implementation session | KOSTENLOS / public | Fix legacy DMA cleanup ordering | Completed; select direct DMA ops before detach, with 77 tests, clean strict checkpatch and a clean GCC 16 object build; Probe 117 hardware test pending |
+| 2026-11-28 | main implementation session | KOSTENLOS / public | Flash and diagnose Probe 117 | Failed before serial/ACM output; no Probe 117-specific Pstore record, so the DMA fix is not hardware-validated and Probe 117 must not be repeated unchanged |
+| 2026-11-28 | main implementation session | KOSTENLOS / public | Recover Probe 117 RAM and correct Pstore attribution | Probe 109 restored through TWRP/HBOOT; SHA-verified dump contains Probe 116 in fixed `dmesg-0` and Probe 109 in the moved console ring, not Probe 117 |
 
 Failed agent runs are kept in the log so a later reader does not mistake a
 missing report for missing work.

@@ -49,8 +49,13 @@ MDP4 VM initialization fails with `-EBUSY` before a DRM card appears. Commit
 `ca7f54998` releases the legacy ARM DMA mapping before the MSM IOMMU attach.
 Probe 116 then crashes while that old domain is detached: its page-table cleanup
 still uses the legacy IOMMU DMA ops and recursively unmaps a physical table
-address as an IOVA. The follow-up fix selects direct DMA ops before the detach;
-Probe 117 will validate it. The backlight stays off until the HTC
+address as an IOVA. The follow-up fix selects direct DMA ops before the detach.
+Probe 117 still produced no serial bytes or ACM device and left no
+Probe 117-specific Pstore
+record. Probe 109 was restored through TWRP/HBOOT to recover the RAM dump; its
+console ring had overwritten Probe 116's ring, while the fixed `dmesg-0` slot
+still held Probe 116. Probe 117 therefore remains an unexplained pre-console
+hang and must not be reflashed unchanged. The backlight stays off until the HTC
 revision-specific PWM sequence is ported, so a successful host boot alone does
 not yet count as visible display output.
 
@@ -297,11 +302,15 @@ end of the first RAM bank and triggered a kernel panic at `0x88c00000`.
 the dump only to that RAM filesystem and pulls it to the host. It never mounts
 or writes eMMC. Set `M7_READMEM` when the reader lives outside `build/m7/`.
 `parse_pstore.py` decodes the five 128 KiB dmesg slots, the 128 KiB console,
-64 KiB pmsg and 128 KiB ftrace slots. It also scans for a displaced console
-header, which happens with this Ramoops layout, and reports every kernel banner
-so a stale crash slot cannot hide the current console log. Ramoops `start` is
-the next write position; valid bytes begin at `(start - size) % capacity`. The
-parser keeps a `strings.txt` index for a damaged or overwritten region.
+64 KiB pmsg and 128 KiB ftrace slots. Invalid fixed offsets are reported with
+their expected and observed headers. The parser also scans for a displaced
+console header, writes `console.bin`, and accepts a wrapped plaintext ring even
+when its kernel banner has rolled off. Console banners are the current-boot
+candidates; banners from `dmesg-*` remain historical. If the console has no
+banner, `current_boot.kernel_banner` stays null instead of borrowing a stale
+crash-slot banner. Ramoops `start` is the next write position; valid bytes begin
+at `(start - size) % capacity`. The parser keeps a `strings.txt` index for a
+damaged or overwritten region.
 
 The verified TWRP kernel has `CONFIG_DEVMEM` disabled, so it cannot read the
 region even though the automatic recovery route now works. A diagnostic HTC

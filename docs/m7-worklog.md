@@ -68,8 +68,10 @@ probe still return to Recovery.
 `dump-pstore.sh` reads the region through a freestanding ARM reader, verifies
 that `/tmp` is tmpfs and never mounts or writes eMMC. `parse_pstore.py` handles
 the five dmesg slots, console, pmsg and ftrace zones, including a displaced
-console header. Old crash slots remain distinguishable from the current boot
-by kernel banner and build timestamp.
+console header. It reports invalid fixed zones and keeps console banners
+separate from historical crash-slot banners. A displaced console ring without a
+banner is still decoded, but its missing banner is not replaced by an old
+`dmesg-0` banner.
 
 ### 2026-11-26: touchscreen
 
@@ -1308,6 +1310,40 @@ module now guards the include and the DMA-ops-before-detach order. All 77 Python
 tests pass, strict checkpatch reports no errors or warnings, and the changed
 driver object builds with GCC 16. Probe 117 must validate this on hardware before
 any further display conclusion; visible physical-panel output remains required.
+
+### 2026-11-28: Probe 117 fails before console and Pstore attribution is corrected
+
+The lease-protected Probe 117 run used clean `8f78d9cc2` from 11:47:17 to
+11:48:12 UTC. Its `boot.img` SHA-256 was
+`b44662c7a386b89dcbfda31f8e3b4ba1b4425cf888f4312be21b58f745a55231`.
+Fastboot flash and reboot returned zero, but serial capture returned one after
+40 seconds with zero bytes and no ACM device. The run therefore did not validate
+the DMA cleanup fix. Probe 117 must not be reflashed unchanged.
+
+A physical HBOOT/TWRP selection followed by a lease-protected restore of Probe
+109 returned a stable ACM shell. Its complete late host probe at uptime 12.71
+reported `M7_WLAN_PRESENT=yes`. The fixed 1 MiB reader then transferred Probe
+117's RAM over that shell with matching device and host SHA-256,
+`0ee0ea6fa8b7647638866f11852c11c3cfae371df217493ef843ddd9b46f3921`.
+
+The dump contains no Probe 117-specific record. The valid fixed `dmesg-0` slot
+still belongs to Probe 116 and carries `7.1.0-ge6d140215eac`. The valid console
+header is displaced to `0xafffa`; its full 131,060-byte ring contains Probe 109
+recovery output, not Probe 116 or Probe 117. This corrects the earlier reading
+of the same displaced region as Probe 116's console. Seven fixed zones have
+invalid signatures and are not valid records.
+
+`parse_pstore.py` now reports those invalid zones, discovers a displaced
+plaintext console ring without requiring a banner, writes `console.bin`, and
+separates console banners from historical `dmesg-*` banners. A bannerless
+console ring leaves `current_boot.kernel_banner` null rather than attributing
+Probe 116's old banner to Probe 117. Synthetic regressions cover all three
+cases. All 80 Python tests pass, Python compilation succeeds and
+`git diff --check` is clean. The parser was also checked against the real dump.
+
+A non-panicking pre-`/init` hang still has no reliable fresh persistent console
+record. The next probe needs evidence-backed MDP4/DSI/IOMMU diagnostics and
+persistent early milestones before another hardware run.
 
 See also:
 

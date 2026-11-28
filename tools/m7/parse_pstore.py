@@ -52,11 +52,22 @@ def decode_dmesg(payload):
     return payload, "missing-header"
 
 
+def looks_like_console(payload):
+    """Reject compressed dmesg and random RAM while accepting wrapped rings."""
+    if not payload or b"\n" not in payload:
+        return False
+    printable = sum(byte in (9, 10, 13) or 32 <= byte < 127 for byte in payload)
+    if printable * 100 < len(payload) * 98:
+        return False
+    return (re.search(rb"\[\s*\d+\.\d+\]", payload) is not None
+            or b"Linux version " in payload)
+
+
 def find_console_record(dump):
     """Find a console ring whose header moved with the Ramoops layout."""
     capacity = CONSOLE_SIZE - 12
     signature = PERSISTENT_RAM_SIG.to_bytes(4, "little")
-    search_from = 0
+    search_from = DUMP_COUNT * RECORD_SIZE
     while True:
         offset = dump.find(signature, search_from)
         if offset < 0:
@@ -69,23 +80,70 @@ def find_console_record(dump):
         if size == 0 or size > capacity or start >= capacity:
             continue
         payload = circular_bytes(dump[offset:offset + CONSOLE_SIZE], start, size)
-        if payload.startswith((b"[", b"<")) and b"Linux version" in payload[:8192]:
+        if looks_like_console(payload):
             return offset, start, size, payload
+
+
+def zone_entry(name, offset, signature, start, size, decoder):
+    return {
+        "name": name,
+        "offset": f"0x{offset:x}",
+        "signature": f"0x{signature:08x}",
+        "start": start,
+        "size": size,
+        "decoder": decoder,
+    }
+
+
+def invalid_zone(name, offset, zone_size, expected_signature, signature,
+                 start, size, reason):
+    return {
+        "name": name,
+        "offset": f"0x{offset:x}",
+        "zone_size": zone_size,
+        "signature": f"0x{signature:08x}",
+        "expected_signature": f"0x{expected_signature:08x}",
+        "start": start,
+        "size": size,
+        "reason": reason,
+    }
+
+
+def kernel_banners(decoded):
+    banners = []
+    for line in decoded.splitlines():
+        if b"Linux version " in line:
+            banner = line.decode("utf-8", errors="replace")
+            if banner not in banners:
+                banners.append(banner)
+    return banners
 
 
 def parse_dump(dump, output):
     output.mkdir(parents=True, exist_ok=True)
     zones = []
+    invalid_zones = []
     decoded_zones = {}
     for name, offset, zone_size, expected_signature in ZONES:
         if offset + zone_size > len(dump):
+            invalid_zones.append(invalid_zone(
+                name, offset, zone_size, expected_signature, 0, 0, 0, "truncated",
+            ))
             continue
         zone = dump[offset:offset + zone_size]
         signature, start, size = struct_unpack(zone[:12])
         if signature != expected_signature:
+            invalid_zones.append(invalid_zone(
+                name, offset, zone_size, expected_signature,
+                signature, start, size, "signature-mismatch",
+            ))
             continue
         capacity = zone_size - 12
         if size > capacity or start >= capacity:
+            invalid_zones.append(invalid_zone(
+                name, offset, zone_size, expected_signature,
+                signature, start, size, "invalid-counters",
+            ))
             continue
         payload = circular_bytes(zone, start, size)
         (output / f"{name}.bin").write_bytes(payload)
@@ -96,46 +154,44 @@ def parse_dump(dump, output):
             decoded, decoder = decode_dmesg(payload)
         (output / f"{name}.txt").write_bytes(decoded)
         decoded_zones[name] = decoded
-        zones.append({
-            "name": name,
-            "offset": f"0x{offset:x}",
-            "signature": f"0x{signature:08x}",
-            "start": start,
-            "size": size,
-            "decoder": decoder,
-        })
+        zones.append(zone_entry(name, offset, signature, start, size, decoder))
 
     if "console" not in decoded_zones:
         console = find_console_record(dump)
         if console:
             offset, start, size, decoded = console
+            (output / "console.bin").write_bytes(decoded)
             (output / "console.txt").write_bytes(decoded)
             decoded_zones["console"] = decoded
-            zones.append({
-                "name": "console",
-                "offset": f"0x{offset:x}",
-                "signature": f"0x{PERSISTENT_RAM_SIG:08x}",
-                "start": start,
-                "size": size,
-                "decoder": "plain",
-            })
+            zones.append(zone_entry(
+                "console", offset, PERSISTENT_RAM_SIG, start, size, "plain",
+            ))
 
     strings = []
     for match in re.finditer(rb"[\x20-\x7e]{4,}", dump):
         strings.append(f"0x{match.start():08x} {match.group().decode('ascii')}")
     (output / "strings.txt").write_text("\n".join(strings) + ("\n" if strings else ""))
 
-    banners = []
-    names = ["console", *sorted(decoded_zones)]
+    offsets = {zone["name"]: zone["offset"] for zone in zones}
+    banner_sources = []
+    names = sorted(decoded_zones)
+    if "console" in decoded_zones:
+        names.remove("console")
+        names.insert(0, "console")
     for name in names:
-        if name not in decoded_zones:
-            continue
-        for line in decoded_zones[name].splitlines():
-            if b"Linux version " in line:
-                banner = line.decode("utf-8", errors="replace")
-                if banner not in banners:
-                    banners.append(banner)
-                break
+        for banner in kernel_banners(decoded_zones[name]):
+            banner_sources.append({
+                "zone": name,
+                "offset": offsets[name],
+                "banner": banner,
+            })
+
+    console_banners = [item for item in banner_sources if item["zone"] == "console"]
+    historical_banners = [item for item in banner_sources if item["zone"] != "console"]
+    stale_dmesg = []
+    if "console" in decoded_zones:
+        stale_dmesg = sorted({item["zone"] for item in historical_banners
+                              if item["zone"].startswith("dmesg-")})
 
     summary = {
         "dump_sha256": hashlib.sha256(dump).hexdigest(),
@@ -143,10 +199,35 @@ def parse_dump(dump, output):
         "nonzero_bytes": sum(byte != 0 for byte in dump),
         "valid_zones": len(zones),
         "zones": zones,
+        "invalid_zones": invalid_zones,
+        "current_boot": None,
+        "stale_dmesg": stale_dmesg,
     }
+
+    banners = [item["banner"] for item in banner_sources]
     if banners:
-        summary["kernel_banner"] = banners[0]
         summary["kernel_banners"] = banners
+        summary["kernel_banner_sources"] = banner_sources
+    if console_banners:
+        summary["kernel_banner"] = console_banners[0]["banner"]
+        summary["kernel_banner_source"] = "console"
+        summary["current_boot"] = {
+            "source": "console",
+            "kernel_banner": console_banners[0]["banner"],
+        }
+    elif "console" in decoded_zones:
+        # A wrapped console ring can predate the banner. Never substitute an old
+        # crash-dump banner and make it look like the latest boot.
+        summary["current_boot"] = {
+            "source": "console",
+            "kernel_banner": None,
+        }
+    elif banner_sources:
+        summary["kernel_banner"] = banner_sources[0]["banner"]
+        summary["kernel_banner_source"] = banner_sources[0]["zone"]
+    if historical_banners:
+        summary["historical_kernel_banners"] = historical_banners
+
     (output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     return summary
 

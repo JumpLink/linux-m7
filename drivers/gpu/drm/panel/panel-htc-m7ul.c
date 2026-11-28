@@ -47,6 +47,7 @@ static int m7ul_panel_prepare(struct drm_panel *panel)
 	struct device *dev = &ctx->dsi->dev;
 	int ret;
 
+	/* The active-low descriptor maps logical 1 to an asserted reset. */
 	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
 	gpiod_set_value_cansleep(ctx->backlight_gpio, 0);
 

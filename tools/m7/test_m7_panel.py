@@ -147,6 +147,26 @@ class M7PanelTests(unittest.TestCase):
         self.assertIn('function = "gpio";', state)
         self.assertIn("output-low;", state)
 
+    def test_active_low_reset_is_released_after_boost(self):
+        panel = node_override(self.dts, "dsi0")
+        prepare = function_body(self.driver, "m7ul_panel_prepare")
+        power_off = function_body(self.driver, "m7ul_panel_power_off")
+
+        self.assertIn(
+            "reset-gpios = <&tlmm_pinmux 31 GPIO_ACTIVE_LOW>;",
+            panel,
+        )
+        self.assertIn('devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH)', self.driver)
+        self.assertLess(
+            prepare.index("gpiod_set_value_cansleep(ctx->reset_gpio, 1)"),
+            prepare.index("regulator_enable(ctx->supplies[0].consumer);"),
+        )
+        self.assertLess(
+            prepare.index("gpiod_set_value_cansleep(ctx->vddn5v_en_gpio, 1)"),
+            prepare.index("gpiod_set_value_cansleep(ctx->reset_gpio, 0)"),
+        )
+        self.assertIn("gpiod_set_value_cansleep(ctx->reset_gpio, 1)", power_off)
+
     def test_backlight_starts_disabled(self):
         state = pin_state(self.dts, "panel_backlight_pin")
         self.assertIn('function = "gpio";', state)

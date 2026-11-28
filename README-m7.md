@@ -41,7 +41,11 @@ is the next test.
 Probe 113 binds `4700000.dsi`, `4700200.phy` and
 `5100000.display-controller`; its complete late host probe reports
 `M7_WLAN_PRESENT=yes`. Probe 114 adds the JDI/Samsung command-mode panel and the
-MDP4 command-interface selection. Its backlight stays off until the HTC
+MDP4 command-interface selection. The clean `e6141baf1` build is packaged with
+the diagnostic DTB, p6 NVRAM and static WLAN tools. Its 15,663,104-byte
+`boot.img` has SHA-256
+`1b0ad8db314ce7f99e61bae375251e6f9e86d308ba600a4f3d3cf71cf6b8acd3`.
+Hardware validation is pending. The backlight stays off until the HTC
 revision-specific PWM sequence is ported, so a successful host boot alone does
 not yet count as visible display output.
 
@@ -95,6 +99,7 @@ Artifacts are written to `build/m7/`:
 | `readmem` | Freestanding ARM reader for the fixed Pstore region |
 | `SHA256SUMS` | Checksums for the generated images |
 | `wifi-tools.json` | Optional WLAN tool hashes and credential-presence flag |
+| `build-manifest.json` | Source commit, image flags and artifact hashes |
 
 For a split build, `SKIP_KERNEL_BUILD=1` packages existing kernel artifacts and
 `SKIP_READER_BUILD=1` reuses an already built `readmem`. This allows the kernel
@@ -211,6 +216,9 @@ The bench waits up to 30 seconds for `/dev/ttyACM*`; override this with
 also sends an `M7_HOST_PROBE` after init or a fresh shell prompt to verify a
 responsive shell when the original marker was written before capture started.
 Set `M7_REQUIRE_WLAN=1` to fail unless that live probe reports `wlan0`.
+The capture repeats the complete live probe every two seconds until the WLAN
+criterion passes or the requested duration ends. The earlier initramfs snapshot
+never satisfies this requirement.
 
 The serial monitor interrupts a stale foreground kernel-log reader, waits for the
 initramfs ready marker or a fresh shell prompt, then sends 21 separate probe

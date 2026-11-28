@@ -1158,11 +1158,32 @@ established the HWEN state. Probe 114 therefore leaves GSBI2 disabled and holds
 GPIO 86 low. A revision-aware backlight driver is the next display step after
 the DSI command path is proven.
 
-Validation before the hardware run: 64 Python tests pass, strict checkpatch
-reports no errors or warnings, the panel binding example validates, and both
-normal and diagnostic DTBs compile. The compiled panel node has the reciprocal
-DSI0 endpoint, XO clock, GPIO 31/86, GPIO 37/36 and L2/LVS5 supplies. The binding
-check still prints existing meta-schema warnings from unrelated bindings.
+Final validation before the hardware run: 68 Python tests pass, strict
+checkpatch reports no errors or warnings, the panel binding example validates,
+and both normal and diagnostic DTBs compile. The compiled panel node has the
+reciprocal DSI0 endpoint, XO clock, GPIO 31/86, GPIO 37/36 and L2/LVS5 supplies.
+GSBI2 and its I2C child stay disabled, and no LM3630A consumer exists. The
+binding check still prints existing meta-schema warnings from unrelated
+bindings. The new driver and binding now have a MAINTAINERS entry.
+
+The final clean build is `e6141baf1effad630367e60dab3482c6a8b94123`, release
+`7.1.0-ge6141baf1eff`. Its 15,663,104-byte `boot.img` has SHA-256
+`1b0ad8db314ce7f99e61bae375251e6f9e86d308ba600a4f3d3cf71cf6b8acd3`. The
+appended `zImage-dtb` hash is
+`5e6d9bb6bb0b93ff293ddefb56357828ae8ab911c5d6011d0b22e5e950b1ba28`, the
+selected diagnostic DTB hash is
+`1507929161ee860da54c69dac9bf17f0b29f48d98b6b53e64de8e157dc91cbe6`, and the
+`vmlinux` hash is
+`764a62db7603f32c845de822c7373a9411f49b5e1b2d4cbbc4bdab5562e1798a`.
+
+The build manifest records `source.dirty=false`, the diagnostic DTB,
+`M7_DIAGNOSTIC_REBOOT=1` and `M7_WATCHDOG_PET=1`. The packaged firmware hash is
+`c30bb8e8e764d910ff1c9e94db7c4492f7d698a024510b614f6d8926e47dd34d`; the p6
+NVRAM is installed under the generic Broadcom filename with hash
+`4301bbe80d045d89200fecef61ba76e0280441a071a3e1d473483b3f390ec922`.
+The static `iw`, `wpa_cli` and `wpa_supplicant` binaries match Probe 113. The
+initramfs contains no WPA configuration. No fastboot device is attached yet,
+so the hardware run remains pending.
 
 See also:
 

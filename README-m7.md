@@ -387,6 +387,7 @@ overlapping ramdisk address, so it did not isolate SMP correctly.
 - `tools/m7/readmem.c`: exact `_llseek` reader used by the recovery dump
 - `tools/m7/parse_pstore.py`: Ramoops decoder with synthetic tests
 - `tools/m7/patch_zimage_early_reboot.py`: pre-decompression recovery marker
+- `docs/m7-vendor-analysis.md`: reproducible HTC/LineageOS evidence ledger
 - `Documentation/devicetree/bindings/arm/qcom.yaml`: board compatible
 
 Hardware facts were cross-checked against the public HTC kernel sources in

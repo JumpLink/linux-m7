@@ -42,6 +42,7 @@ not duplicated in this public repository; the workspace maps roles to models in
 | 2026-11-28 | main implementation session | KOSTENLOS / public | Fix legacy DMA cleanup ordering | Completed; select direct DMA ops before detach, with 77 tests, clean strict checkpatch and a clean GCC 16 object build; Probe 117 hardware test pending |
 | 2026-11-28 | main implementation session | KOSTENLOS / public | Flash and diagnose Probe 117 | Failed before serial/ACM output; no Probe 117-specific Pstore record, so the DMA fix is not hardware-validated and Probe 117 must not be repeated unchanged |
 | 2026-11-28 | main implementation session | KOSTENLOS / public | Recover Probe 117 RAM and correct Pstore attribution | Probe 109 restored through TWRP/HBOOT; SHA-verified dump contains Probe 116 in fixed `dmesg-0` and Probe 109 in the moved console ring, not Probe 117 |
+| 2026-11-28 | main implementation session | KOSTENLOS / public | Protocol vendor-source analysis | Public `cm-14.1` snapshot pinned; panel mode, rails, first-init/resume order, DCS tables and PWM revision path recorded in `docs/m7-vendor-analysis.md` |
 
 Failed agent runs are kept in the log so a later reader does not mistake a
 missing report for missing work.

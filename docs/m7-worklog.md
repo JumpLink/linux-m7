@@ -1078,6 +1078,42 @@ with `-19`, and the cleanup oopses in `msm_iommu_identity_attach`, which the
 watchdog turns into a reset loop. The display path does not need the GPU, so the
 next probe disables `&gpu` and keeps MDP4/DSI.
 
+### 2026-11-28: Probe 112 exposes an empty component-match crash
+
+Probe 112 was built from clean commit `2572b7b80` with the diagnostic reboot and
+watchdog pet enabled. Its `boot.img` is 15,665,152 bytes with SHA-256
+`d20b5e90c790644b665ba1faf69afa3ac9a4d3feb5ff2d5c827d5a2b74aa69ed`. Ramoops
+shows a dummy `vdd` regulator warning, followed by:
+
+```
+Unable to handle kernel NULL pointer dereference at virtual address 00000004
+PC is at component_master_add_with_match+0x10/0xf4
+LR is at msm_drv_probe+0x150/0x1f4
+r0: 00000000 r2: 00000000
+```
+
+The regulator warning is incidental. With the GPU disabled and no available
+remote endpoint registered as a component, `match` remains NULL. The component
+core dereferences that pointer while adding the aggregate master. The fix stays
+local to `msm_drv_probe()`: reject an empty match with `-ENODEV` and propagate a
+component-match error pointer before calling the core. The generic core API is
+unchanged, and a source regression test covers both paths.
+
+### 2026-11-28: Wire the M7 MDP4 controller to DSI0
+
+The M7 downstream display path assigns L2 to DSI VDDA, LVS5 to DSI VDDIO and
+LVS7 to PHY VDDIO. It has no separate DSI AVDD consumer; L11 belongs to MHL.
+The board DTS therefore connects `mdp_dsi1_out` and `dsi0_in` reciprocally,
+enables `dsi0` and `dsi0_phy`, and declares only the supplies used downstream.
+AVDD stays unconnected instead of copying another board's rail assignment.
+
+Mainline obtains the DSI host supplies with `devm_regulator_bulk_get_const()`.
+That uses `NORMAL_GET`, so under full constraints a missing AVDD receives a
+dummy regulator rather than failing the host probe. A dummy-supply diagnostic
+is therefore expected for this panel-less probe, but it must not prevent the
+MDP4/DSI host from probing. Board tests guard the endpoints, status, supply
+assignment, voltage constraints and the disabled GPU.
+
 See also:
 
 - `docs/m7-upstream-candidates.md`

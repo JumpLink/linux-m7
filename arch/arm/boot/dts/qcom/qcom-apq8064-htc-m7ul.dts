@@ -278,6 +278,12 @@
 			bias-pull-down;
 		};
 
+		pm8921_l2: l2 {
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+			bias-pull-down;
+		};
+
 		pm8921_l3: l3 {
 			regulator-min-microvolt = <3075000>;
 			regulator-max-microvolt = <3075000>;
@@ -324,6 +330,10 @@
 		};
 
 		pm8921_lvs4: lvs4 {
+			bias-pull-down;
+		};
+
+		pm8921_lvs5: lvs5 {
 			bias-pull-down;
 		};
 
@@ -389,4 +399,28 @@
  */
 &gpu {
 	status = "disabled";
+};
+
+/*
+ * The M7 downstream panel path uses L2 for DSI VDDA, LVS5 for DSI VDDIO and
+ * LVS7 for the PHY VDDIO. It has no separate DSI AVDD consumer; L11 powers
+ * MHL instead. Leave AVDD unconnected rather than copying the Nexus 7 rail.
+ */
+&mdp_dsi1_out {
+	remote-endpoint = <&dsi0_in>;
+};
+
+&dsi0_in {
+	remote-endpoint = <&mdp_dsi1_out>;
+};
+
+&dsi0 {
+	vdda-supply = <&pm8921_l2>;
+	vddio-supply = <&pm8921_lvs5>;
+	status = "okay";
+};
+
+&dsi0_phy {
+	vddio-supply = <&pm8921_lvs7>;
+	status = "okay";
 };

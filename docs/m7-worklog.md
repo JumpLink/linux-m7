@@ -1056,6 +1056,28 @@ isolated to a sub-driver (MDP4 vs DSI vs GPU) with targeted `CONFIG_DRM_MSM_*`
 options, offline, without risking the device again. The known-good Probe 109
 image was restored to recover the device.
 
+### 2026-11-28: Ramoops pinpoints the DRM_MSM hang to the GPU bind
+
+Probe 111 enabled DRM_MSM with the diagnostic reboot and watchdog pet, then the
+watchdog reset preserved the kernel log in Ramoops. Read back over pstore, the
+last lines before the hang are:
+
+```
+adreno 4300000.gpu: Too many stream IDs for IOMMU master
+adreno 4300000.gpu: supply vdd not found, using dummy regulator
+adreno 4300000.gpu: [drm:msm_devfreq_init] ERROR Couldn't initialize GPU devfreq
+mdp4 5100000.display-controller: failed to load adreno gpu
+mdp4 5100000.display-controller: failed to bind 4300000.gpu (ops a3xx_ops): -19
+mdp4 5100000.display-controller: adev bind failed: -19
+Call trace: msm_iommu_identity_attach -> arm_v7s_free_pgtable (oops)
+```
+
+The enabled `adreno-320.2` GPU node has ten `gfx3d` stream IDs and no `vdd`
+regulator. The MDP4 display controller tries to bind the GPU, the bind fails
+with `-19`, and the cleanup oopses in `msm_iommu_identity_attach`, which the
+watchdog turns into a reset loop. The display path does not need the GPU, so the
+next probe disables `&gpu` and keeps MDP4/DSI.
+
 See also:
 
 - `docs/m7-upstream-candidates.md`

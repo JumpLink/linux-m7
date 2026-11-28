@@ -206,6 +206,14 @@ class M7PanelTests(unittest.TestCase):
         self.assertIn("clock-frequency = <400000>;", gsbi2_i2c)
         self.assertIn("status = \"okay\";", gsbi2_i2c)
 
+    def test_panel_resolves_pwm_bus_phandle_not_panel_node(self):
+        probe = function_body(self.driver, "m7ul_panel_probe")
+        self.assertIn('of_parse_phandle(dev->of_node, "pwm-i2c-bus", 0)', probe)
+        self.assertIn("of_get_i2c_adapter_by_node(bus_np)", probe)
+        self.assertIn("of_node_put(bus_np)", probe)
+        self.assertNotIn("of_get_i2c_adapter_by_node(dev->of_node)", probe)
+        self.assertIn("if (!ctx->pwm_adapter)", probe)
+
     def test_panel_releases_the_pwm_adapter(self):
         self.assertIn("static void m7ul_put_pwm_adapter(void *data)", self.driver)
         self.assertIn("i2c_put_adapter(data);", self.driver)

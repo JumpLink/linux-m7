@@ -234,6 +234,7 @@ static int m7ul_panel_probe(struct mipi_dsi_device *dsi)
 {
 	struct device *dev = &dsi->dev;
 	struct m7ul_panel *ctx;
+	struct device_node *bus_np;
 	int ret;
 
 	ctx = devm_drm_panel_alloc(dev, struct m7ul_panel, panel,
@@ -274,28 +275,32 @@ static int m7ul_panel_probe(struct mipi_dsi_device *dsi)
 				     "failed to get XO clock\n");
 
 	/*
-	 * The backlight PWM IC sits on a separate I2C bus. Resolve it by
+	 * The backlight PWM IC sits on a separate I2C bus. Resolve the bus
 	 * phandle so the panel driver can read the revision without
 	 * registering a backlight consumer. A missing bus is not fatal:
 	 * the panel still drives the display, only the backlight stays off.
 	 */
-	ctx->pwm_adapter = of_get_i2c_adapter_by_node(dev->of_node);
-	if (IS_ERR(ctx->pwm_adapter)) {
-		ret = PTR_ERR(ctx->pwm_adapter);
-		dev_warn(dev, "no backlight PWM bus: %d\n", ret);
-		ctx->pwm_adapter = NULL;
+	bus_np = of_parse_phandle(dev->of_node, "pwm-i2c-bus", 0);
+	if (!bus_np) {
+		dev_warn(dev, "no backlight PWM bus phandle\n");
 	} else {
-		ret = devm_add_action_or_reset(dev, m7ul_put_pwm_adapter,
-					       ctx->pwm_adapter);
-		if (ret)
-			return ret;
-		ctx->pwm_client = devm_i2c_new_dummy_device(dev,
-							    ctx->pwm_adapter,
-							    M7UL_PWM_I2C_ADDRESS);
-		if (IS_ERR(ctx->pwm_client)) {
-			ret = PTR_ERR(ctx->pwm_client);
-			dev_warn(dev, "no backlight PWM device: %d\n", ret);
-			ctx->pwm_client = NULL;
+		ctx->pwm_adapter = of_get_i2c_adapter_by_node(bus_np);
+		of_node_put(bus_np);
+		if (!ctx->pwm_adapter) {
+			dev_warn(dev, "backlight PWM bus not ready\n");
+		} else {
+			ret = devm_add_action_or_reset(dev, m7ul_put_pwm_adapter,
+						       ctx->pwm_adapter);
+			if (ret)
+				return ret;
+			ctx->pwm_client = devm_i2c_new_dummy_device(dev,
+								    ctx->pwm_adapter,
+								    M7UL_PWM_I2C_ADDRESS);
+			if (IS_ERR(ctx->pwm_client)) {
+				ret = PTR_ERR(ctx->pwm_client);
+				dev_warn(dev, "no backlight PWM device: %d\n", ret);
+				ctx->pwm_client = NULL;
+			}
 		}
 	}
 	ctx->dsi = dsi;

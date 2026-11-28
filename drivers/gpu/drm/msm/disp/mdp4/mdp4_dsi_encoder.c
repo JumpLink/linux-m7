@@ -106,10 +106,15 @@ static void mdp4_dsi_encoder_disable(struct drm_encoder *encoder)
 static void mdp4_dsi_encoder_enable(struct drm_encoder *encoder)
 {
 	struct mdp4_dsi_encoder *mdp4_dsi_encoder = to_mdp4_dsi_encoder(encoder);
+	struct msm_drm_private *priv = encoder->dev->dev_private;
 	struct mdp4_kms *mdp4_kms = get_kms(encoder);
+	enum mdp4_intf intf = INTF_DSI_VIDEO;
 
 	if (mdp4_dsi_encoder->enabled)
 		return;
+
+	if (msm_dsi_is_cmd_mode(priv->kms->dsi[0]))
+		intf = INTF_DSI_CMD;
 
 	mdp4_crtc_set_config(encoder->crtc,
 			MDP4_DMA_CONFIG_PACK_ALIGN_MSB |
@@ -120,7 +125,7 @@ static void mdp4_dsi_encoder_enable(struct drm_encoder *encoder)
 			MDP4_DMA_CONFIG_B_BPC(BPC8) |
 			MDP4_DMA_CONFIG_PACK(0x21));
 
-	mdp4_crtc_set_intf(encoder->crtc, INTF_DSI_VIDEO, 0);
+	mdp4_crtc_set_intf(encoder->crtc, intf, 0);
 
 	mdp4_write(mdp4_kms, REG_MDP4_DSI_ENABLE, 1);
 

@@ -41,10 +41,11 @@ is the next test.
 Probe 113 binds `4700000.dsi`, `4700200.phy` and
 `5100000.display-controller`; its complete late host probe reports
 `M7_WLAN_PRESENT=yes`. Probe 114 adds the JDI/Samsung command-mode panel and the
-MDP4 command-interface selection. The clean `e6141baf1` build is packaged with
-the diagnostic DTB, p6 NVRAM and static WLAN tools. Its 15,663,104-byte
-`boot.img` has SHA-256
-`1b0ad8db314ce7f99e61bae375251e6f9e86d308ba600a4f3d3cf71cf6b8acd3`.
+MDP4 command-interface selection, but it crashes before serial output. Pstore
+shows a VM initialization failure followed by duplicate KMS cleanup. Probe 115
+leaves failed KMS teardown to the DRM core and logs the VM errno. Its clean
+`d0396bb1b` build has a 15,665,152-byte `boot.img` with SHA-256
+`34ec4e618462fe56f28d058c48b84a05a67e447ee72fe91be6cc79e77862bab6`.
 Hardware validation is pending. The backlight stays off until the HTC
 revision-specific PWM sequence is ported, so a successful host boot alone does
 not yet count as visible display output.

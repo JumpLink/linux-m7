@@ -33,6 +33,9 @@ not duplicated in this public repository; the workspace maps roles to models in
 | 2026-11-28 | main implementation session | KOSTENLOS / public | Prepare Probe 114 M7 command-mode panel | Completed; corrected PMIC boost pins, deferred revision-specific backlight and added the panel MAINTAINERS entry |
 | 2026-11-28 | main implementation session | KOSTENLOS / public | Require a late complete WLAN host probe | Completed; capture repeats the live probe until `wlan0` appears, with 68 Python tests passing |
 | 2026-11-28 | main implementation session | KOSTENLOS / public | Build and package Probe 114 | Completed; clean `e6141baf1` image, p6 NVRAM, static WLAN tools and both DTBs validated; hardware test pending |
+| 2026-11-28 | main implementation session | KOSTENLOS / public | Diagnose the Probe 114 Pstore crash | Completed; VM initialization failed before the errno was logged, then duplicate KMS cleanup crashed in `destroy_workqueue()`; single-owner teardown fixed |
+| 2026-11-28 | main implementation session | KOSTENLOS / public | Harden serial capture across USB reconnects | Completed; stale ACM and transient `EIO` paths retry, probe acceptance resets per connection, and the live Probe 109 host probe passes |
+| 2026-11-28 | main implementation session | KOSTENLOS / public | Build and package Probe 115 | Completed; clean `d0396bb1b` image with VM errno diagnostics, p6 NVRAM and no WPA configuration; hardware test pending |
 
 Failed agent runs are kept in the log so a later reader does not mistake a
 missing report for missing work.

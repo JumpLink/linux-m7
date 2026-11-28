@@ -1182,8 +1182,55 @@ The build manifest records `source.dirty=false`, the diagnostic DTB,
 NVRAM is installed under the generic Broadcom filename with hash
 `4301bbe80d045d89200fecef61ba76e0280441a071a3e1d473483b3f390ec922`.
 The static `iw`, `wpa_cli` and `wpa_supplicant` binaries match Probe 113. The
-initramfs contains no WPA configuration. No fastboot device is attached yet,
-so the hardware run remains pending.
+initramfs contains no WPA configuration.
+
+### 2026-11-28: Diagnose Probe 114 and prepare Probe 115
+
+The lease-protected Probe 114 run wrote only `boot` and rebooted, but the phone
+never produced serial output. Restoring known-good Probe 109 returned a stable
+ACM shell. Reading Pstore directly from that shell recovered the failed boot.
+
+The saved log shows DSI0 bound to MDP4 and `MDP4 version v4.4` at 0.878596. At
+0.895967, `msm_kms_init_vm()` failed and DRM reported `failed to load kms`. The
+old error path did not print the errno, so the underlying VM failure is still
+unknown.
+
+The failure path then destroyed the MDP4 KMS object twice. `mdp4_kms_init()`
+called `mdp4_destroy()`, and the DRM core called `msm_drm_kms_uninit()` through
+`msm_drm_uninit()`. Pstore records repeated `destroy_workqueue()` warnings and
+a NULL-pointer write at address `0x122` in `destroy_workqueue()`. Commit
+`d94db5cd9` leaves failed KMS teardown to the DRM core and prints the VM errno.
+A source regression test guards both the single-owner cleanup and the new
+diagnostic.
+
+The serial monitor also failed on stale ACM nodes and USB disconnect `EIO`.
+Commit `d0396bb1b` retries transient open, termios, select, read and flush
+errors. Each reconnect clears the old probe acceptance state, so only a fresh,
+complete late `M7_HOST_PROBE` can satisfy `M7_REQUIRE_WLAN=1`. The byte count
+still covers the whole serial log. Focused tests cover stale nodes, read and
+termios `EIO`, final flush `EIO`, non-transient errors and bounded close.
+
+The new capture ran against the restored Probe 109 and returned a complete
+host probe, `M7_WLAN_PRESENT=yes`, a complete dmesg block and a clean ACM
+close. This confirms the reconnect changes on hardware without changing the
+running kernel.
+
+Probe 115 builds from clean commit
+`d0396bb1b778f32a57d5950b8050825c20981b80`, release
+`7.1.0-gd0396bb1b778`. The 15,665,152-byte `boot.img` has SHA-256
+`34ec4e618462fe56f28d058c48b84a05a67e447ee72fe91be6cc79e77862bab6`.
+The appended `zImage-dtb` hash is
+`47b8d2378837e06fb57183721bbce1cac12bc23848a1147edc27316c7b2da30b`, and the
+`vmlinux` hash is
+`6935c2ffce8b0f842f6c30bbe6396538032ca377e6925fd2213c923d643be147`.
+
+The build manifest records `source.dirty=false`, the unchanged diagnostic DTB
+`1507929161ee860da54c69dac9bf17f0b29f48d98b6b53e64de8e157dc91cbe6`, the
+watchdog pet and the diagnostic reboot flag. Firmware, p6 NVRAM and static WLAN
+tools match Probe 114. The image contains no WPA configuration. All 74 Python
+tests pass, Python compilation succeeds, strict checkpatch reports no errors
+or warnings, and `git diff --check` is clean. The hardware run remains pending;
+display success still requires visible output on the physical panel.
 
 See also:
 

@@ -8009,6 +8009,12 @@ T:	git https://gitlab.freedesktop.org/drm/misc/kernel.git
 F:	Documentation/devicetree/bindings/display/panel/himax,hx8394.yaml
 F:	drivers/gpu/drm/panel/panel-himax-hx8394.c
 
+DRM DRIVER FOR HTC ONE M7 UL PANELS
+M:	Pascal Garber <pascal@artandcode.studio>
+S:	Maintained
+F:	Documentation/devicetree/bindings/display/panel/htc,m7ul-panel.yaml
+F:	drivers/gpu/drm/panel/panel-htc-m7ul.c
+
 DRM DRIVER FOR HX8357D PANELS
 S:	Orphan
 T:	git https://gitlab.freedesktop.org/drm/misc/kernel.git

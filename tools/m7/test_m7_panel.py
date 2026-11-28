@@ -10,6 +10,7 @@ DRIVER = ROOT / "drivers/gpu/drm/panel/panel-htc-m7ul.c"
 DTS = ROOT / "arch/arm/boot/dts/qcom/qcom-apq8064-htc-m7ul.dts"
 BINDING = ROOT / "Documentation/devicetree/bindings/display/panel/htc,m7ul-panel.yaml"
 DEFCONFIG = ROOT / "arch/arm/configs/m7_defconfig"
+MAINTAINERS = ROOT / "MAINTAINERS"
 
 
 def function_body(source, name):
@@ -202,6 +203,12 @@ class M7PanelTests(unittest.TestCase):
         self.assertIn("config DRM_PANEL_HTC_M7UL", (ROOT / "drivers/gpu/drm/panel/Kconfig").read_text())
         self.assertIn("compatible:\n    const: htc,m7ul-panel", BINDING.read_text())
         self.assertNotIn("  backlight: true", BINDING.read_text())
+        maintainers = MAINTAINERS.read_text()
+        self.assertIn(
+            "F:\tDocumentation/devicetree/bindings/display/panel/htc,m7ul-panel.yaml",
+            maintainers,
+        )
+        self.assertIn("F:\tdrivers/gpu/drm/panel/panel-htc-m7ul.c", maintainers)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,11 @@
 #include <linux/adreno-smmu-priv.h>
 #include <linux/io-pgtable.h>
 #include <linux/kmemleak.h>
+
+#if IS_ENABLED(CONFIG_ARM_DMA_USE_IOMMU)
+#include <asm/dma-iommu.h>
+#endif
+
 #include "msm_drv.h"
 #include "msm_gpu_trace.h"
 #include "msm_mmu.h"
@@ -729,6 +734,20 @@ struct msm_mmu *msm_iommu_new(struct device *dev, unsigned long quirks)
 	if (!device_iommu_mapped(dev))
 		return ERR_PTR(-ENODEV);
 
+	/*
+	 * The legacy ARM DMA glue may already own a paging domain. The IOMMU
+	 * core rejects a second direct attach to such a group. MSM manages its
+	 * own domain, so release the DMA mapping before taking ownership.
+	 */
+#if IS_ENABLED(CONFIG_ARM_DMA_USE_IOMMU)
+	if (to_dma_iommu_mapping(dev)) {
+		struct dma_iommu_mapping *mapping = to_dma_iommu_mapping(dev);
+
+		arm_iommu_detach_device(dev);
+		arm_iommu_release_mapping(mapping);
+	}
+#endif
+
 	domain = iommu_paging_domain_alloc(dev);
 	if (IS_ERR(domain))
 		return ERR_CAST(domain);
@@ -748,6 +767,7 @@ struct msm_mmu *msm_iommu_new(struct device *dev, unsigned long quirks)
 
 	ret = iommu_attach_device(iommu->domain, dev);
 	if (ret) {
+		dev_err(dev, "failed to attach IOMMU domain: %d\n", ret);
 		iommu_domain_free(domain);
 		kfree(iommu);
 		return ERR_PTR(ret);

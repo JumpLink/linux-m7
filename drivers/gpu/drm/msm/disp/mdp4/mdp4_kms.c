@@ -459,6 +459,7 @@ static int mdp4_kms_init(struct drm_device *dev)
 	vm = msm_kms_init_vm(mdp4_kms->dev, NULL);
 	if (IS_ERR(vm)) {
 		ret = PTR_ERR(vm);
+		DRM_DEV_ERROR(dev->dev, "failed to initialize VM: %d\n", ret);
 		goto fail;
 	}
 
@@ -493,9 +494,10 @@ static int mdp4_kms_init(struct drm_device *dev)
 	return 0;
 
 fail:
-	if (kms)
-		mdp4_destroy(kms);
-
+	/*
+	 * The DRM core owns KMS teardown after kms_init fails. Destroying it
+	 * here would free kms->wq before msm_drm_kms_uninit() uses it.
+	 */
 	return ret;
 }
 

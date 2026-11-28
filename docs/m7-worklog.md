@@ -1229,8 +1229,38 @@ The build manifest records `source.dirty=false`, the unchanged diagnostic DTB
 watchdog pet and the diagnostic reboot flag. Firmware, p6 NVRAM and static WLAN
 tools match Probe 114. The image contains no WPA configuration. All 74 Python
 tests pass, Python compilation succeeds, strict checkpatch reports no errors
-or warnings, and `git diff --check` is clean. The hardware run remains pending;
-display success still requires visible output on the physical panel.
+or warnings, and `git diff --check` is clean.
+
+### 2026-11-28: Validate Probe 115 and prepare Probe 116
+
+The lease-protected Probe 115 run lasted 214 seconds and wrote only `boot`.
+Fastboot, reboot and serial capture returned zero. A complete late host probe
+at uptime 13.45 reported `M7_WLAN_PRESENT=yes`; `wlan0` remained down. USB,
+eMMC and the Synaptics touchscreen stayed available.
+
+`4700000.dsi`, `4700200.phy` and `5100000.display-controller` were bound, but
+there was no DRM card, connector or `/sys/kernel/debug/dri/0`. The panel device
+`4700000.dsi.0` existed with `htc,m7ul-panel`, had no driver and was not deferred.
+A manual bind returned `-EBUSY`. Fresh dmesg identified the primary failure:
+`mdp4_kms_init()` reported `failed to initialize VM: -16`, followed by
+`failed to load kms` and `adev bind failed: -16`. The panel's failed DSI attach
+was downstream of that VM failure. GPIO 31/36/37/86 stayed low, and the panel
+regulators had no enabled consumers.
+
+The live display controller belonged to IOMMU group 0. Its sysfs type was
+`identity`, which describes the default domain rather than the currently
+attached DMA domain. With `CONFIG_ARM_DMA_USE_IOMMU`, the ARM DMA glue had
+already attached a paging domain during device setup. The IOMMU core rejects a
+second direct attach while that non-default domain owns the group, returning
+`-EBUSY` before the MSM context is programmed.
+
+Commit `ca7f54998` releases the legacy ARM DMA mapping before attaching the
+MSM-managed domain, following the existing Tegra/Host1x ownership-transfer
+pattern. A regression source guard checks the detach/release order and the
+attach errno diagnostic. All 76 Python tests pass, strict checkpatch is clean,
+and the changed driver object builds with GCC 16. Probe 116 will test this fix
+on hardware; visible physical-panel output remains the display acceptance
+criterion.
 
 See also:
 

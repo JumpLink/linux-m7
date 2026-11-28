@@ -44,9 +44,10 @@ Probe 113 binds `4700000.dsi`, `4700200.phy` and
 MDP4 command-interface selection, but it crashes before serial output. Pstore
 shows a VM initialization failure followed by duplicate KMS cleanup. Probe 115
 leaves failed KMS teardown to the DRM core and logs the VM errno. Its clean
-`d0396bb1b` build has a 15,665,152-byte `boot.img` with SHA-256
-`34ec4e618462fe56f28d058c48b84a05a67e447ee72fe91be6cc79e77862bab6`.
-Hardware validation is pending. The backlight stays off until the HTC
+`d0396bb1b` build boots to the ACM shell and reports `M7_WLAN_PRESENT=yes`, but
+MDP4 VM initialization fails with `-EBUSY` before a DRM card appears. Commit
+`ca7f54998` releases the legacy ARM DMA mapping before the MSM IOMMU attach;
+Probe 116 will validate that fix. The backlight stays off until the HTC
 revision-specific PWM sequence is ported, so a successful host boot alone does
 not yet count as visible display output.
 

@@ -36,6 +36,8 @@ not duplicated in this public repository; the workspace maps roles to models in
 | 2026-11-28 | main implementation session | KOSTENLOS / public | Diagnose the Probe 114 Pstore crash | Completed; VM initialization failed before the errno was logged, then duplicate KMS cleanup crashed in `destroy_workqueue()`; single-owner teardown fixed |
 | 2026-11-28 | main implementation session | KOSTENLOS / public | Harden serial capture across USB reconnects | Completed; stale ACM and transient `EIO` paths retry, probe acceptance resets per connection, and the live Probe 109 host probe passes |
 | 2026-11-28 | main implementation session | KOSTENLOS / public | Build and package Probe 115 | Completed; clean `d0396bb1b` image with VM errno diagnostics, p6 NVRAM and no WPA configuration; hardware test pending |
+| 2026-11-28 | main implementation session | KOSTENLOS / public | Flash and validate Probe 115 | Completed; complete late host probe reports WLAN present, while MDP4 VM attach fails with `-EBUSY` and no DRM card appears |
+| 2026-11-28 | main implementation session | KOSTENLOS / public | Fix MSM IOMMU domain ownership | Completed; release the legacy ARM DMA mapping before MSM attach, with 76 tests and a clean GCC 16 object build; Probe 116 hardware test pending |
 
 Failed agent runs are kept in the log so a later reader does not mistake a
 missing report for missing work.

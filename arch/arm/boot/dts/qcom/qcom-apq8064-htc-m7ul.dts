@@ -378,3 +378,15 @@
 	dr-mode = "peripheral";
 	status = "okay";
 };
+
+/*
+ * The adreno-320.2 GPU node is enabled in the SoC dtsi but has ten gfx3d
+ * stream IDs and no vdd regulator. When DRM_MSM is on, the MDP4 display
+ * controller binds the GPU, that bind fails with -19, and the cleanup oopses
+ * in msm_iommu_identity_attach, which the watchdog turns into a reset loop.
+ * The display path does not need the GPU, so keep it off until it is brought
+ * up properly with the right stream IDs and regulators.
+ */
+&gpu {
+	status = "disabled";
+};

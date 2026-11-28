@@ -64,6 +64,13 @@ def host_probe_commands(wlan_diagnostics=False):
     )
 
 
+def host_probe_satisfied(ready, probe_source, probe, require_wlan):
+    """Return whether the live probe meets this run's acceptance criteria."""
+    if not (ready and probe_source == "host"):
+        return False
+    return not require_wlan or probe.get("M7_WLAN_PRESENT") == "yes"
+
+
 def close_tty(fd, timeout):
     """Close a CDC ACM descriptor without waiting indefinitely for USB drain."""
     if timeout <= 0:
@@ -216,7 +223,9 @@ def main():
                 next_probe = now + 0.1
             if (
                 next_probe is not None
-                and not (ready and probe_source == "host")
+                and not host_probe_satisfied(
+                    ready, probe_source, probe, args.require_wlan,
+                )
                 and now >= next_probe
             ):
                 try:

@@ -12,6 +12,7 @@ from tools.m7.capture_serial import (
     close_tty,
     has_complete_dmesg,
     host_probe_commands,
+    host_probe_satisfied,
     parse_probe,
     shell_ready,
 )
@@ -112,6 +113,28 @@ class DmesgCaptureTest(unittest.TestCase):
 
 
 class ParseProbeTest(unittest.TestCase):
+    def test_complete_live_probe_satisfies_standard_run(self):
+        self.assertTrue(host_probe_satisfied(True, "host", {}, False))
+
+    def test_wlan_requirement_waits_for_later_live_probe(self):
+        self.assertFalse(
+            host_probe_satisfied(
+                True, "host", {"M7_WLAN_PRESENT": "no"}, True,
+            )
+        )
+        self.assertTrue(
+            host_probe_satisfied(
+                True, "host", {"M7_WLAN_PRESENT": "yes"}, True,
+            )
+        )
+
+    def test_initramfs_snapshot_never_satisfies_live_probe(self):
+        self.assertFalse(
+            host_probe_satisfied(
+                True, "initramfs", {"M7_WLAN_PRESENT": "yes"}, True,
+            )
+        )
+
     def test_missing_probe_is_not_ready(self):
         ready, probe, source = parse_probe(b"")
 

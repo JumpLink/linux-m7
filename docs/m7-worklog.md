@@ -1043,6 +1043,19 @@ Ordered sub-steps, each its own probe:
 The panel init tables stay derived from the HTC Android source and are not
 committed verbatim; only a minimal mainline-style panel driver is added.
 
+### 2026-11-28: Probe 110 shows DRM_MSM hangs at boot
+
+Step 1 enabled `CONFIG_DRM_MSM=y` and built Probe 110. The kernel reaches the
+initramfs init but never brings up `ttyGS0`, and the device ends in a watchdog
+reset loop. A second build with `M7_DIAGNOSTIC_REBOOT=0` still loops, so this
+is a hard kernel hang, not the init diagnostic reboot. The only change was
+`CONFIG_DRM_MSM=y`; the SoC `mdp`/`dsi0` nodes are still `disabled`.
+
+The revert is commit `c770402ae`. Before re-enabling DRM_MSM, the hang must be
+isolated to a sub-driver (MDP4 vs DSI vs GPU) with targeted `CONFIG_DRM_MSM_*`
+options, offline, without risking the device again. The known-good Probe 109
+image was restored to recover the device.
+
 See also:
 
 - `docs/m7-upstream-candidates.md`

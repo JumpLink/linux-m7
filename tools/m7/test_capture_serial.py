@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Tests for the M7 serial probe parser."""
 
+import errno
+import pathlib
+import tempfile
+import termios
 import time
 import unittest
 from unittest import mock
@@ -9,7 +13,9 @@ from tools.m7.capture_serial import (
     DMESG_COMMAND,
     HOST_PROBE_COMMANDS,
     WLAN_DIAGNOSTIC_COMMANDS,
+    capture_console,
     close_tty,
+    configure_tty,
     has_complete_dmesg,
     host_probe_commands,
     host_probe_satisfied,
@@ -42,6 +48,128 @@ class DmesgCommandTest(unittest.TestCase):
     def test_command_ends_with_a_real_newline(self):
         self.assertTrue(DMESG_COMMAND.endswith(b"\n"))
         self.assertNotIn(b"\\n", DMESG_COMMAND)
+
+
+class CaptureConsoleTest(unittest.TestCase):
+    def test_stale_tty_and_read_eio_recover_to_a_fresh_live_probe(self):
+        class Clock:
+            now = 0.0
+
+            def monotonic(self):
+                return self.now
+
+            def sleep(self, seconds):
+                self.now += seconds
+
+            def select(self, fds, *_args):
+                self.now += 0.2
+                return fds, [], []
+
+        clock = Clock()
+        attrs = [
+            0,
+            0,
+            0,
+            0,
+            termios.B115200,
+            termios.B115200,
+            [0] * termios.NCCS,
+        ]
+        ready = b"M7_READY_BEGIN\nM7_KERNEL=old\nM7_READY_END\n/ # "
+        live_probe = (
+            b"M7_HOST_PROBE_BEGIN\n"
+            b"M7_KERNEL=7.1.0-m7\n"
+            b"M7_WLAN_PRESENT=yes\n"
+            b"M7_HOST_PROBE_END\n/ # "
+        )
+        reads = {
+            10: [ready, OSError(errno.EIO, "disconnected")],
+            11: [live_probe],
+        }
+
+        def read(fd, _size):
+            values = reads[fd]
+            if not values:
+                raise BlockingIOError
+            value = values.pop(0)
+            if isinstance(value, BaseException):
+                raise value
+            return value
+
+        with tempfile.TemporaryDirectory() as directory:
+            log = pathlib.Path(directory) / "serial.log"
+            with (
+                mock.patch("tools.m7.capture_serial.time.monotonic", side_effect=clock.monotonic),
+                mock.patch("tools.m7.capture_serial.time.sleep", side_effect=clock.sleep),
+                mock.patch("tools.m7.capture_serial.select.select", side_effect=clock.select),
+                mock.patch(
+                    "tools.m7.capture_serial.os.open",
+                    side_effect=[
+                        OSError(errno.ENOENT, "stale tty"),
+                        10,
+                        OSError(errno.EIO, "reconnecting"),
+                        11,
+                    ],
+                ) as open_tty,
+                mock.patch("tools.m7.capture_serial.os.read", side_effect=read),
+                mock.patch("tools.m7.capture_serial.os.write", return_value=1),
+                mock.patch("tools.m7.capture_serial.os.close"),
+                mock.patch("tools.m7.capture_serial.termios.tcgetattr", return_value=attrs),
+                mock.patch("tools.m7.capture_serial.termios.tcsetattr"),
+                mock.patch(
+                    "tools.m7.capture_serial.termios.tcflush",
+                    side_effect=OSError(errno.EIO, "disconnected"),
+                ),
+            ):
+                result = capture_console(
+                    "/dev/ttyACM0", log, duration=1.0, require_wlan=True,
+                )
+
+            self.assertEqual(open_tty.call_count, 4)
+            self.assertTrue(result["ready"])
+            self.assertEqual(result["probe_source"], "host")
+            self.assertEqual(result["probe"]["M7_WLAN_PRESENT"], "yes")
+            self.assertEqual(result["bytes"], len(ready) + len(live_probe))
+            self.assertIn(ready, log.read_bytes())
+            self.assertIn(live_probe, log.read_bytes())
+
+
+class ConfigureTtyTest(unittest.TestCase):
+    def setUp(self):
+        self.attrs = [
+            0,
+            0,
+            0,
+            0,
+            termios.B115200,
+            termios.B115200,
+            [0] * termios.NCCS,
+        ]
+
+    def test_getattr_eio_marks_the_connection_stale(self):
+        with mock.patch(
+            "tools.m7.capture_serial.termios.tcgetattr",
+            side_effect=termios.error(errno.EIO, "disconnected"),
+        ):
+            self.assertFalse(configure_tty(42))
+
+    def test_setattr_eio_marks_the_connection_stale(self):
+        with (
+            mock.patch("tools.m7.capture_serial.termios.tcgetattr", return_value=self.attrs),
+            mock.patch(
+                "tools.m7.capture_serial.termios.tcsetattr",
+                side_effect=OSError(errno.EIO, "disconnected"),
+            ),
+        ):
+            self.assertFalse(configure_tty(42))
+
+    def test_non_transient_termios_error_propagates(self):
+        with mock.patch(
+            "tools.m7.capture_serial.termios.tcgetattr",
+            side_effect=termios.error(errno.EINVAL, "invalid argument"),
+        ):
+            with self.assertRaises(termios.error):
+                configure_tty(42)
 
 
 class CloseTtyTest(unittest.TestCase):

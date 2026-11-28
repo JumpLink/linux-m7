@@ -2,6 +2,7 @@
 """Capture the M7 USB ACM console and parse its benchmark ready marker."""
 
 import argparse
+import errno
 import json
 import os
 import pathlib
@@ -158,6 +159,208 @@ def parse_probe(data):
     return ready, probe, source
 
 
+TRANSIENT_TTY_ERRNOS = {
+    errno.EBUSY,
+    errno.EIO,
+    errno.ENODEV,
+    errno.ENOENT,
+    errno.ENXIO,
+}
+
+
+def transient_tty_error(error):
+    """Return whether an ACM operation can succeed after USB re-enumeration."""
+    if isinstance(error, termios.error):
+        return bool(error.args) and error.args[0] in TRANSIENT_TTY_ERRNOS
+    return isinstance(error, OSError) and error.errno in TRANSIENT_TTY_ERRNOS
+
+
+def configure_tty(fd):
+    """Apply raw 115200 settings, returning False for a disconnected ACM."""
+    try:
+        attrs = termios.tcgetattr(fd)
+        desired = attrs.copy()
+        desired[6] = attrs[6].copy()
+        desired[0] = 0
+        desired[1] = 0
+        desired[2] = (
+            attrs[2] & ~(termios.CSIZE | termios.PARENB | termios.CSTOPB | termios.CRTSCTS)
+        ) | termios.CS8 | termios.CREAD | termios.CLOCAL
+        desired[3] = attrs[3] & ~(termios.ECHO | termios.ICANON | termios.IEXTEN)
+        desired[4] = termios.B115200
+        desired[5] = termios.B115200
+        desired[6][termios.VMIN] = 0
+        desired[6][termios.VTIME] = 0
+        if attrs != desired:
+            termios.tcsetattr(fd, termios.TCSANOW, desired)
+    except (OSError, termios.error) as error:
+        if transient_tty_error(error):
+            return False
+        raise
+    return True
+
+
+def capture_console(
+    tty,
+    log,
+    duration,
+    require_wlan=False,
+    wlan_diagnostics=False,
+    close_timeout=1.0,
+):
+    """Capture across stale ACM nodes and USB reconnects until the deadline."""
+    if duration <= 0:
+        raise ValueError("duration must be positive")
+
+    data = bytearray()
+    bytes_captured = 0
+    probe = {}
+    ready = False
+    probe_source = None
+    started = time.monotonic()
+    deadline = started + duration
+    next_probe = None
+    dmesg_requested = False
+    fd = None
+    configured = False
+    log_path = pathlib.Path(log)
+    probe_command = b"\n".join(host_probe_commands(wlan_diagnostics)) + b"\n"
+
+    def disconnect():
+        nonlocal fd, configured, next_probe, dmesg_requested
+        nonlocal ready, probe, probe_source
+
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        fd = None
+        configured = False
+        next_probe = None
+        dmesg_requested = False
+        ready = False
+        probe = {}
+        probe_source = None
+        data.clear()
+
+    with log_path.open("wb", buffering=0) as output:
+        while time.monotonic() < deadline:
+            if fd is None:
+                try:
+                    fd = os.open(tty, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+                except OSError as error:
+                    if not transient_tty_error(error):
+                        raise
+                    remaining = max(0, deadline - time.monotonic())
+                    time.sleep(min(0.1, remaining))
+                    continue
+                configured = False
+
+            if not configured:
+                if not configure_tty(fd):
+                    disconnect()
+                    continue
+                configured = True
+                # A previous monitor may have left cat /proc/kmsg in the
+                # foreground. ISIG stays enabled so Ctrl-C interrupts it.
+                try:
+                    os.write(fd, b"\x03\n")
+                except OSError as error:
+                    if not transient_tty_error(error):
+                        raise
+                    disconnect()
+                    continue
+
+            now = time.monotonic()
+            if next_probe is None and shell_ready(data):
+                next_probe = now + 0.1
+            if (
+                next_probe is not None
+                and not host_probe_satisfied(
+                    ready, probe_source, probe, require_wlan,
+                )
+                and now >= next_probe
+            ):
+                try:
+                    os.write(fd, probe_command)
+                except OSError as error:
+                    if not transient_tty_error(error):
+                        raise
+                    disconnect()
+                    continue
+                next_probe = now + 2
+
+            remaining = max(0, deadline - time.monotonic())
+            try:
+                readable, _, _ = select.select([fd], [], [], min(0.2, remaining))
+            except InterruptedError:
+                continue
+            except OSError as error:
+                if not transient_tty_error(error):
+                    raise
+                disconnect()
+                continue
+            if not readable:
+                continue
+            try:
+                chunk = os.read(fd, 65536)
+            except BlockingIOError:
+                continue
+            except OSError as error:
+                if not transient_tty_error(error):
+                    raise
+                disconnect()
+                continue
+            if not chunk:
+                disconnect()
+                continue
+            data.extend(chunk)
+            bytes_captured += len(chunk)
+            output.write(chunk)
+
+            ready, probe, probe_source = parse_probe(data)
+            if (
+                probe_source == "host"
+                and not dmesg_requested
+                and b"/ #" in data[-64:]
+            ):
+                try:
+                    os.write(fd, DMESG_COMMAND)
+                except OSError as error:
+                    if not transient_tty_error(error):
+                        raise
+                    disconnect()
+                    continue
+                dmesg_requested = True
+
+    if fd is not None:
+        try:
+            termios.tcflush(fd, termios.TCOFLUSH)
+        except OSError:
+            pass
+        closed = close_tty(fd, close_timeout)
+        if not closed:
+            print(
+                "warning: ACM close timed out; releasing the descriptor on exit",
+                file=sys.stderr,
+            )
+    else:
+        closed = True
+
+    wlan_ready = probe.get("M7_WLAN_PRESENT") == "yes"
+    return {
+        "ready": ready,
+        "probe_source": probe_source,
+        "wlan_ready": wlan_ready,
+        "probe": probe,
+        "bytes": bytes_captured,
+        "dmesg_captured": has_complete_dmesg(data),
+        "tty_closed": closed,
+        "elapsed_seconds": round(time.monotonic() - started, 3),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("tty")
@@ -181,105 +384,17 @@ def main():
     )
     args = parser.parse_args()
 
-    fd = os.open(args.tty, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
-    attrs = termios.tcgetattr(fd)
-    desired = attrs.copy()
-    desired[6] = attrs[6].copy()
-    desired[0] = 0
-    desired[1] = 0
-    desired[2] = (
-        attrs[2] & ~(termios.CSIZE | termios.PARENB | termios.CSTOPB | termios.CRTSCTS)
-    ) | termios.CS8 | termios.CREAD | termios.CLOCAL
-    desired[3] = attrs[3] & ~(termios.ECHO | termios.ICANON | termios.IEXTEN)
-    desired[4] = termios.B115200
-    desired[5] = termios.B115200
-    desired[6][termios.VMIN] = 0
-    desired[6][termios.VTIME] = 0
-    if attrs != desired:
-        termios.tcsetattr(fd, termios.TCSANOW, desired)
-
-    data = bytearray()
-    probe = {}
-    ready = False
-    probe_source = None
-    started = time.monotonic()
-    next_probe = None
-    dmesg_requested = False
-    log_path = pathlib.Path(args.log)
-    probe_command = b"\n".join(host_probe_commands(args.wlan_diagnostics)) + b"\n"
-
-    with log_path.open("wb", buffering=0) as log:
-        # A previous monitor may have left cat /proc/kmsg in the foreground.
-        # ISIG stays enabled so Ctrl-C interrupts that reader. The newline makes
-        # an idle shell redraw its prompt, which gates the host probe.
-        try:
-            os.write(fd, b"\x03\n")
-        except OSError:
-            pass
-
-        while time.monotonic() - started < args.duration:
-            now = time.monotonic()
-            if next_probe is None and shell_ready(data):
-                next_probe = now + 0.1
-            if (
-                next_probe is not None
-                and not host_probe_satisfied(
-                    ready, probe_source, probe, args.require_wlan,
-                )
-                and now >= next_probe
-            ):
-                try:
-                    os.write(fd, probe_command)
-                except OSError:
-                    pass
-                next_probe = now + 2
-
-            readable, _, _ = select.select([fd], [], [], 0.2)
-            if not readable:
-                continue
-            try:
-                chunk = os.read(fd, 65536)
-            except OSError:
-                break
-            if not chunk:
-                break
-            data.extend(chunk)
-            log.write(chunk)
-
-            ready, probe, probe_source = parse_probe(data)
-            if (
-                probe_source == "host"
-                and not dmesg_requested
-                and b"/ #" in data[-64:]
-            ):
-                try:
-                    os.write(fd, DMESG_COMMAND)
-                except OSError:
-                    pass
-                dmesg_requested = True
-
-    try:
-        termios.tcflush(fd, termios.TCOFLUSH)
-    except OSError:
-        pass
-    closed = close_tty(fd, args.close_timeout)
-    if not closed:
-        print(
-            "warning: ACM close timed out; releasing the descriptor on exit",
-            file=sys.stderr,
-        )
-    wlan_ready = probe.get("M7_WLAN_PRESENT") == "yes"
-    dmesg_captured = has_complete_dmesg(data)
-    result = {
-        "ready": ready,
-        "probe_source": probe_source,
-        "wlan_ready": wlan_ready,
-        "probe": probe,
-        "bytes": len(data),
-        "dmesg_captured": dmesg_captured,
-        "tty_closed": closed,
-        "elapsed_seconds": round(time.monotonic() - started, 3),
-    }
+    result = capture_console(
+        args.tty,
+        args.log,
+        args.duration,
+        require_wlan=args.require_wlan,
+        wlan_diagnostics=args.wlan_diagnostics,
+        close_timeout=args.close_timeout,
+    )
+    wlan_ready = result["wlan_ready"]
+    ready = result["ready"]
+    probe_source = result["probe_source"]
     pathlib.Path(args.log + ".json").write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))
     if args.require_wlan and not (

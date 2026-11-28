@@ -1345,6 +1345,52 @@ A non-panicking pre-`/init` hang still has no reliable fresh persistent console
 record. The next probe needs evidence-backed MDP4/DSI/IOMMU diagnostics and
 persistent early milestones before another hardware run.
 
+### 2026-11-28: Prepare Probe 118 with checked startup paths
+
+Probe 118 bundles the evidence-backed changes that the previous checklist
+deferred. Nothing here is hardware-validated yet.
+
+MDP4/IOMMU:
+
+- `mdp4_enable()` checks every clock enable, unwinds earlier clocks in reverse
+  order and logs `M7_MDP4_CLOCKS_BEGIN/FAIL/DONE`.
+- `msm_iommu_iova_to_phys()` skips unattached `-1` contexts instead of
+  trusting that the first IOMMU owns the stored client.
+- The IOMMU repairs from the earlier audit stay in: checked domain
+  configuration, domain-owned page-table cleanup, context-0 validity,
+  client-only identity detach, old-domain list removal, clock ordering and
+  attach-error unwind.
+
+DSI/panel startup tracing (all `pr_emerg`, so they reach the Pstore console):
+
+- `dsi_mgr_bridge_power_on()`: `M7_DSI_PHY_ENABLE_*`,
+  `M7_DSI_HOST_POWER_ON_*`, `M7_DSI_HOST_IRQ_ENABLE_*`.
+- `dsi_mgr_bridge_pre_enable()`: `M7_DSI_PRE_ENABLE_*`,
+  `M7_DSI_BRIDGE_POWER_ON_*`, `M7_DSI_HOST_ENABLE_*`. The callback is still
+  void, so a failure is logged but not propagated to the DRM core.
+- `msm_dsi_host_power_on()` now checks `pm_runtime_get_sync()` and logs
+  `M7_DSI_HOST_PM/LINK_CLK/PINCTRL/MMIO_*`.
+- `msm_dsi_phy_enable()` logs `M7_DSI_PHY_PM/REGULATOR/PROGRAM/PLL_RESTORE_*`.
+- The panel logs `M7_PANEL_PREPARE_*`, `M7_PANEL_VDDIO/VDD/BOOST/RESET/XO_*`
+  and `M7_PANEL_ENABLE_BEGIN/DONE`.
+
+PWM revision, read-only:
+
+- GSBI2 and `gsbi2_i2c` are enabled at 400 kHz (vendor `clk_freq`).
+- The panel node gains `pwm-i2c-bus = <&gsbi2_i2c>`; the binding documents it.
+- The driver resolves the adapter with `of_get_i2c_adapter_by_node()` plus a
+  devm action, creates a dummy client at `0x36` and reads register `0x1f`
+  after the panel prepare sequence. The result is logged as
+  `M7_PANEL_PWM_REVISION <n>`; a missing bus or read error is non-fatal and
+  leaves the backlight off. GPIO 86 stays low, no revision-specific writes.
+
+Validation: 40 Python tests pass, `git diff --check` is clean, strict
+checkpatch reports no new warnings, the YAML binding parses, both DTBs compile
+with GSBI2 at 400 kHz and the panel phandle, and all seven changed C objects
+build with GCC 16. Probe 118 must show a complete late `M7_HOST_PROBE` with
+`M7_WLAN_PRESENT=yes`, the new startup milestones and a
+`M7_PANEL_PWM_REVISION` line; visible physical-panel output remains required.
+
 See also:
 
 - `docs/m7-upstream-candidates.md`

@@ -744,25 +744,33 @@ int msm_dsi_phy_enable(struct msm_dsi_phy *phy,
 
 	dev = &phy->pdev->dev;
 
+	pr_emerg("M7_DSI_PHY_PM_BEGIN\n");
 	ret = pm_runtime_resume_and_get(dev);
 	if (ret) {
 		DRM_DEV_ERROR(dev, "%s: resume failed, %d\n",
 			__func__, ret);
 		goto res_en_fail;
 	}
+	pr_emerg("M7_DSI_PHY_PM_DONE\n");
 
+	pr_emerg("M7_DSI_PHY_REGULATOR_BEGIN\n");
 	ret = regulator_bulk_enable(phy->cfg->num_regulators, phy->supplies);
 	if (ret) {
+		pr_emerg("M7_DSI_PHY_REGULATOR_FAIL %d\n", ret);
 		DRM_DEV_ERROR(dev, "%s: regulator enable failed, %d\n",
 			__func__, ret);
 		goto reg_en_fail;
 	}
+	pr_emerg("M7_DSI_PHY_REGULATOR_DONE\n");
 
+	pr_emerg("M7_DSI_PHY_PROGRAM_BEGIN\n");
 	ret = phy->cfg->ops.enable(phy, clk_req);
 	if (ret) {
+		pr_emerg("M7_DSI_PHY_PROGRAM_FAIL %d\n", ret);
 		DRM_DEV_ERROR(dev, "%s: phy enable failed, %d\n", __func__, ret);
 		goto phy_en_fail;
 	}
+	pr_emerg("M7_DSI_PHY_PROGRAM_DONE\n");
 
 	memcpy(shared_timings, &phy->timing.shared_timings,
 	       sizeof(*shared_timings));
@@ -774,12 +782,15 @@ int msm_dsi_phy_enable(struct msm_dsi_phy *phy,
 	 * source.
 	 */
 	if (phy->usecase != MSM_DSI_PHY_SLAVE) {
+		pr_emerg("M7_DSI_PHY_PLL_RESTORE_BEGIN\n");
 		ret = msm_dsi_phy_pll_restore_state(phy);
 		if (ret) {
+			pr_emerg("M7_DSI_PHY_PLL_RESTORE_FAIL %d\n", ret);
 			DRM_DEV_ERROR(dev, "%s: failed to restore phy state, %d\n",
 				__func__, ret);
 			goto pll_restor_fail;
 		}
+		pr_emerg("M7_DSI_PHY_PLL_RESTORE_DONE\n");
 	}
 
 	return 0;

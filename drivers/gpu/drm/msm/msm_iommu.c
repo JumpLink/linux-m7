@@ -713,6 +713,10 @@ static int msm_iommu_unmap(struct msm_mmu *mmu, uint64_t iova, size_t len)
 static void msm_iommu_destroy(struct msm_mmu *mmu)
 {
 	struct msm_iommu *iommu = to_msm_iommu(mmu);
+
+	/* VM creation can fail after attach, before its owner detaches the MMU. */
+	if (iommu_get_domain_for_dev(mmu->dev) == iommu->domain)
+		iommu_detach_device(iommu->domain, mmu->dev);
 	iommu_domain_free(iommu->domain);
 	kmem_cache_destroy(iommu->pt_cache);
 	kfree(iommu);

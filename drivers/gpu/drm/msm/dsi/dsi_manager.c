@@ -220,33 +220,45 @@ static int dsi_mgr_bridge_power_on(struct drm_bridge *bridge)
 
 	DBG("id=%d", id);
 
+	pr_emerg("M7_DSI_PHY_ENABLE_BEGIN %d\n", id);
 	ret = dsi_mgr_phy_enable(id, phy_shared_timings);
-	if (ret)
+	if (ret) {
+		pr_emerg("M7_DSI_PHY_ENABLE_FAIL %d %d\n", id, ret);
 		goto phy_en_fail;
+	}
+	pr_emerg("M7_DSI_PHY_ENABLE_DONE %d\n", id);
 
+	pr_emerg("M7_DSI_HOST_POWER_ON_BEGIN %d\n", id);
 	ret = msm_dsi_host_power_on(host, &phy_shared_timings[id], is_bonded_dsi, msm_dsi->phy);
 	if (ret) {
+		pr_emerg("M7_DSI_HOST_POWER_ON_FAIL %d %d\n", id, ret);
 		pr_err("%s: power on host %d failed, %d\n", __func__, id, ret);
 		goto host_on_fail;
 	}
+	pr_emerg("M7_DSI_HOST_POWER_ON_DONE %d\n", id);
 
 	if (is_bonded_dsi && msm_dsi1) {
+		pr_emerg("M7_DSI_HOST1_POWER_ON_BEGIN\n");
 		ret = msm_dsi_host_power_on(msm_dsi1->host,
 				&phy_shared_timings[DSI_1], is_bonded_dsi, msm_dsi1->phy);
 		if (ret) {
+			pr_emerg("M7_DSI_HOST1_POWER_ON_FAIL %d\n", ret);
 			pr_err("%s: power on host1 failed, %d\n",
 							__func__, ret);
 			goto host1_on_fail;
 		}
+		pr_emerg("M7_DSI_HOST1_POWER_ON_DONE\n");
 	}
 
 	/*
 	 * Enable before preparing the panel, disable after unpreparing, so
 	 * that the panel can communicate over the DSI link.
 	 */
+	pr_emerg("M7_DSI_HOST_IRQ_ENABLE_BEGIN %d\n", id);
 	msm_dsi_host_enable_irq(host);
 	if (is_bonded_dsi && msm_dsi1)
 		msm_dsi_host_enable_irq(msm_dsi1->host);
+	pr_emerg("M7_DSI_HOST_IRQ_ENABLE_DONE %d\n", id);
 
 	return 0;
 
@@ -290,26 +302,37 @@ static void dsi_mgr_bridge_pre_enable(struct drm_bridge *bridge)
 	if (is_bonded_dsi && !IS_MASTER_DSI_LINK(id))
 		return;
 
+	pr_emerg("M7_DSI_PRE_ENABLE_BEGIN %d\n", id);
+	pr_emerg("M7_DSI_BRIDGE_POWER_ON_BEGIN %d\n", id);
 	ret = dsi_mgr_bridge_power_on(bridge);
 	if (ret) {
+		pr_emerg("M7_DSI_BRIDGE_POWER_ON_FAIL %d %d\n", id, ret);
 		dev_err(&msm_dsi->pdev->dev, "Power on failed: %d\n", ret);
 		return;
 	}
+	pr_emerg("M7_DSI_BRIDGE_POWER_ON_DONE %d\n", id);
 
+	pr_emerg("M7_DSI_HOST_ENABLE_BEGIN %d\n", id);
 	ret = msm_dsi_host_enable(host);
 	if (ret) {
+		pr_emerg("M7_DSI_HOST_ENABLE_FAIL %d %d\n", id, ret);
 		pr_err("%s: enable host %d failed, %d\n", __func__, id, ret);
 		goto host_en_fail;
 	}
+	pr_emerg("M7_DSI_HOST_ENABLE_DONE %d\n", id);
 
 	if (is_bonded_dsi && msm_dsi1) {
+		pr_emerg("M7_DSI_HOST1_ENABLE_BEGIN\n");
 		ret = msm_dsi_host_enable(msm_dsi1->host);
 		if (ret) {
+			pr_emerg("M7_DSI_HOST1_ENABLE_FAIL %d\n", ret);
 			pr_err("%s: enable host1 failed, %d\n", __func__, ret);
 			goto host1_en_fail;
 		}
+		pr_emerg("M7_DSI_HOST1_ENABLE_DONE\n");
 	}
 
+	pr_emerg("M7_DSI_PRE_ENABLE_DONE %d\n", id);
 	return;
 
 host1_en_fail:

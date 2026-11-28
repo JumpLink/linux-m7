@@ -174,7 +174,6 @@ class M7PanelTests(unittest.TestCase):
         self.assertIn("output-low;", state)
 
     def test_revision_specific_backlight_is_not_probed_yet(self):
-        self.assertNotIn("&gsbi2 {", self.dts)
         self.assertNotIn("led-controller@36", self.dts)
         self.assertNotIn('compatible = "ti,lm3630a";', self.dts)
         self.assertNotIn("drm_panel_of_backlight(&ctx->panel);", self.driver)
@@ -186,6 +185,32 @@ class M7PanelTests(unittest.TestCase):
         )
         self.assertIsNotNone(block)
         self.assertNotIn("depends on BACKLIGHT_CLASS_DEVICE", block.group(1))
+
+    def test_pwm_revision_read_is_read_only(self):
+        driver = self.driver
+        self.assertIn("M7UL_PWM_I2C_ADDRESS\t0x36", driver)
+        self.assertIn("M7UL_PWM_REVISION_REG\t0x1f", driver)
+        self.assertIn("i2c_smbus_read_byte_data(ctx->pwm_client,", driver)
+        self.assertIn("M7_PANEL_PWM_REVISION_BEGIN", driver)
+        self.assertIn("M7_PANEL_PWM_REVISION_FAIL %d", driver)
+        self.assertIn("M7_PANEL_PWM_REVISION %d", driver)
+        self.assertNotIn("i2c_smbus_write_byte_data", driver)
+        self.assertNotIn("gpiod_set_value_cansleep(ctx->backlight_gpio, 1)", driver)
+
+    def test_panel_resolves_the_pwm_bus_by_phandle(self):
+        panel = node_override(self.dts, "dsi0")
+        self.assertIn("pwm-i2c-bus = <&gsbi2_i2c>;", panel)
+        gsbi2 = node_override(self.dts, "gsbi2")
+        self.assertIn("status = \"okay\";", gsbi2)
+        gsbi2_i2c = node_override(self.dts, "gsbi2_i2c")
+        self.assertIn("clock-frequency = <400000>;", gsbi2_i2c)
+        self.assertIn("status = \"okay\";", gsbi2_i2c)
+
+    def test_panel_releases_the_pwm_adapter(self):
+        self.assertIn("static void m7ul_put_pwm_adapter(void *data)", self.driver)
+        self.assertIn("i2c_put_adapter(data);", self.driver)
+        self.assertIn("devm_add_action_or_reset(dev, m7ul_put_pwm_adapter,", self.driver)
+        self.assertIn("devm_i2c_new_dummy_device(dev,", self.driver)
 
     def test_pmic_boost_pins_start_disabled(self):
         for label in ("panel_p5v_en_pin", "panel_n5v_en_pin"):

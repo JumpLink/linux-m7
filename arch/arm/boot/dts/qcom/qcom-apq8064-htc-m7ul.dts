@@ -105,6 +105,16 @@
 	status = "okay";
 };
 
+&gsbi2 {
+	qcom,mode = <GSBI_PROT_I2C>;
+	status = "okay";
+};
+
+&gsbi2_i2c {
+	clock-frequency = <400000>;
+	status = "okay";
+};
+
 &gsbi3 {
 	qcom,mode = <GSBI_PROT_I2C_UART>;
 	status = "okay";
@@ -468,6 +478,7 @@
 		vdd5v-en-gpios = <&pm8921_gpio 37 GPIO_ACTIVE_HIGH>;
 		vddn5v-en-gpios = <&pm8921_gpio 36 GPIO_ACTIVE_HIGH>;
 		backlight-gpios = <&tlmm_pinmux 86 GPIO_ACTIVE_HIGH>;
+		pwm-i2c-bus = <&gsbi2_i2c>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&panel_backlight_pin>, <&panel_reset_pin>;
 

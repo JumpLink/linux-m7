@@ -153,12 +153,18 @@ table.
 The vendor probe assumes the I2C client exists and does not check the revision
 read result. Mainline must not copy that assumption.
 
-**Mainline mapping:** GPIO 86 stays low. GSBI2/LM3630A has no consumer and no DRM
-backlight device is registered.
+**Mainline mapping:** GPIO 86 stays low. GSBI2 and its I2C child are enabled at
+400 kHz, matching the vendor `clk_freq`. The panel driver resolves the bus by
+`pwm-i2c-bus` phandle, creates a dummy client at 7-bit `0x36`, and reads
+register `0x1f` read-only at the end of `m7ul_panel_prepare()`. No
+revision-specific writes, no `backlight-gpios` consumer, no DRM backlight
+device is registered.
 
-**Status:** read-only revision detection is the next permitted step. No
-revision-specific writes until the bus, address, register value and error paths
-are verified on hardware.
+**Status:** read-only revision detection is implemented. The read is
+non-fatal: a missing bus or a failed read leaves the backlight off and does
+not abort panel prepare. The revision value appears in the Pstore console as
+`M7_PANEL_PWM_REVISION <n>` (or `M7_PANEL_PWM_REVISION_FAIL <errno>`). No
+revision-specific writes until that value is verified on hardware.
 
 ## Translation rules
 
@@ -196,6 +202,8 @@ are verified on hardware.
 | 2026-11-28 | Panel-command trace | Minimal Mainline subset identified; full vendor tables remain revision-specific | High |
 | 2026-11-28 | PWM trace | GSBI2, address `0x36`, revision register `0x1f`, two programming families | High |
 | 2026-11-28 | Mainline comparison | Unchecked IOMMU configuration and clock/MMIO diagnostics added to the next-probe checklist | High for source, hardware pending |
+| 2026-11-28 | Read-only PWM detection | GSBI2 at 400 kHz, dummy client `0x36`, register `0x1f` read after panel prepare | High for source, hardware pending |
+| 2026-11-28 | DSI startup tracing | PHY/host/panel milestones added; `pm_runtime_get_sync()` return checked | High for source, hardware pending |
 
 ## Blog narrative
 

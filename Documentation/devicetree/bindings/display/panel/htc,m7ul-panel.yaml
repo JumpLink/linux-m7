@@ -49,6 +49,10 @@ properties:
     maxItems: 1
     description: Active-high backlight enable
 
+  pwm-i2c-bus:
+    $ref: /schemas/types/phandle-array.yaml#/items
+    description: I2C bus of the backlight PWM controller
+
   port: true
 
 required:
@@ -86,6 +90,7 @@ examples:
             vdd5v-en-gpios = <&pm8921_gpio 37 GPIO_ACTIVE_HIGH>;
             vddn5v-en-gpios = <&pm8921_gpio 36 GPIO_ACTIVE_HIGH>;
             backlight-gpios = <&tlmm 86 GPIO_ACTIVE_HIGH>;
+            pwm-i2c-bus = <&i2c2>;
 
             port {
                 panel_in: endpoint {

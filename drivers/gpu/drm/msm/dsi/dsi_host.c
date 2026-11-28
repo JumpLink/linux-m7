@@ -2429,8 +2429,10 @@ int msm_dsi_host_enable(struct mipi_dsi_host *host)
 {
 	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
 
+	pr_emerg("M7_DSI_HOST_ENABLE_MMIO_BEGIN\n");
 	dsi_op_mode_config(msm_host,
 		!!(msm_host->mode_flags & MIPI_DSI_MODE_VIDEO), true);
+	pr_emerg("M7_DSI_HOST_ENABLE_MMIO_DONE\n");
 
 	/* TODO: clock should be turned off for command mode,
 	 * and only turned on before MDP START.
@@ -2494,36 +2496,56 @@ int msm_dsi_host_power_on(struct mipi_dsi_host *host,
 	if (phy_shared_timings->byte_intf_clk_div_2)
 		msm_host->byte_intf_clk_rate /= 2;
 
+	pr_emerg("M7_DSI_HOST_VREG_BEGIN\n");
 	msm_dsi_sfpb_config(msm_host, true);
 
 	ret = regulator_bulk_enable(msm_host->cfg_hnd->cfg->num_regulators,
 				    msm_host->supplies);
 	if (ret) {
+		pr_emerg("M7_DSI_HOST_VREG_FAIL %d\n", ret);
 		pr_err("%s:Failed to enable vregs.ret=%d\n",
 			__func__, ret);
 		goto unlock_ret;
 	}
+	pr_emerg("M7_DSI_HOST_VREG_DONE\n");
 
-	pm_runtime_get_sync(&msm_host->pdev->dev);
+	pr_emerg("M7_DSI_HOST_PM_BEGIN\n");
+	ret = pm_runtime_get_sync(&msm_host->pdev->dev);
+	if (ret) {
+		pr_emerg("M7_DSI_HOST_PM_FAIL %d\n", ret);
+		pr_err("%s: failed to resume DSI host: %d\n", __func__, ret);
+		pm_runtime_put_noidle(&msm_host->pdev->dev);
+		goto fail_disable_reg;
+	}
+	pr_emerg("M7_DSI_HOST_PM_DONE\n");
+
+	pr_emerg("M7_DSI_HOST_LINK_CLK_BEGIN\n");
 	ret = cfg_hnd->ops->link_clk_set_rate(msm_host);
 	if (!ret)
 		ret = cfg_hnd->ops->link_clk_enable(msm_host);
 	if (ret) {
+		pr_emerg("M7_DSI_HOST_LINK_CLK_FAIL %d\n", ret);
 		pr_err("%s: failed to enable link clocks. ret=%d\n",
 		       __func__, ret);
 		goto fail_disable_reg;
 	}
+	pr_emerg("M7_DSI_HOST_LINK_CLK_DONE\n");
 
+	pr_emerg("M7_DSI_HOST_PINCTRL_BEGIN\n");
 	ret = pinctrl_pm_select_default_state(&msm_host->pdev->dev);
 	if (ret) {
+		pr_emerg("M7_DSI_HOST_PINCTRL_FAIL %d\n", ret);
 		pr_err("%s: failed to set pinctrl default state, %d\n",
 			__func__, ret);
 		goto fail_disable_clk;
 	}
+	pr_emerg("M7_DSI_HOST_PINCTRL_DONE\n");
 
+	pr_emerg("M7_DSI_HOST_MMIO_BEGIN\n");
 	dsi_timing_setup(msm_host, is_bonded_dsi);
 	dsi_sw_reset(msm_host);
 	dsi_ctrl_enable(msm_host, phy_shared_timings, phy);
+	pr_emerg("M7_DSI_HOST_MMIO_DONE\n");
 
 	msm_host->power_on = true;
 	mutex_unlock(&msm_host->dev_mutex);

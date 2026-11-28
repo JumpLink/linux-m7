@@ -174,12 +174,31 @@ int mdp4_disable(struct mdp4_kms *mdp4_kms)
 
 int mdp4_enable(struct mdp4_kms *mdp4_kms)
 {
+	static const char * const clk_names[] = {
+		"core", "iface", "lut", "bus",
+	};
+	struct clk *clks[] = {
+		mdp4_kms->clk,
+		mdp4_kms->pclk,
+		mdp4_kms->lut_clk,
+		mdp4_kms->axi_clk,
+	};
+	int i, ret;
+
 	DBG("");
 
-	clk_prepare_enable(mdp4_kms->clk);
-	clk_prepare_enable(mdp4_kms->pclk);
-	clk_prepare_enable(mdp4_kms->lut_clk);
-	clk_prepare_enable(mdp4_kms->axi_clk);
+	pr_emerg("M7_MDP4_CLOCKS_BEGIN\n");
+	for (i = 0; i < ARRAY_SIZE(clks); i++) {
+		ret = clk_prepare_enable(clks[i]);
+		if (ret) {
+			pr_emerg("M7_MDP4_CLOCKS_FAIL %s %d\n", clk_names[i], ret);
+			pr_err("failed to enable %s clock: %d\n", clk_names[i], ret);
+			while (i--)
+				clk_disable_unprepare(clks[i]);
+			return ret;
+		}
+	}
+	pr_emerg("M7_MDP4_CLOCKS_DONE\n");
 
 	return 0;
 }
@@ -373,20 +392,28 @@ fail:
 	return ret;
 }
 
-static void read_mdp_hw_revision(struct mdp4_kms *mdp4_kms,
-				 u32 *major, u32 *minor)
+static int read_mdp_hw_revision(struct mdp4_kms *mdp4_kms,
+				u32 *major, u32 *minor)
 {
 	struct drm_device *dev = mdp4_kms->dev;
 	u32 version;
+	int ret;
 
-	mdp4_enable(mdp4_kms);
+	pr_emerg("M7_MDP4_REVISION_CLOCKS_BEGIN\n");
+	ret = mdp4_enable(mdp4_kms);
+	if (ret)
+		return ret;
+
+	pr_emerg("M7_MDP4_REVISION_MMIO_BEGIN\n");
 	version = mdp4_read(mdp4_kms, REG_MDP4_VERSION);
+	pr_emerg("M7_MDP4_REVISION_MMIO_DONE\n");
 	mdp4_disable(mdp4_kms);
 
 	*major = FIELD(version, MDP4_VERSION_MAJOR);
 	*minor = FIELD(version, MDP4_VERSION_MINOR);
 
 	DRM_DEV_INFO(dev->dev, "MDP4 version v%d.%d", *major, *minor);
+	return 0;
 }
 
 static int mdp4_kms_init(struct drm_device *dev)
@@ -422,7 +449,9 @@ static int mdp4_kms_init(struct drm_device *dev)
 
 	clk_set_rate(mdp4_kms->clk, max_clk);
 
-	read_mdp_hw_revision(mdp4_kms, &major, &minor);
+	ret = read_mdp_hw_revision(mdp4_kms, &major, &minor);
+	if (ret)
+		goto fail;
 
 	if (major != 4) {
 		DRM_DEV_ERROR(dev->dev, "unexpected MDP version: v%d.%d\n",
@@ -449,42 +478,60 @@ static int mdp4_kms_init(struct drm_device *dev)
 	 * have left things on, in which case we'll start getting faults if
 	 * we don't disable):
 	 */
-	mdp4_enable(mdp4_kms);
+	pr_emerg("M7_MDP4_PRE_VM_CLOCKS_BEGIN\n");
+	ret = mdp4_enable(mdp4_kms);
+	if (ret)
+		goto fail;
+
+	pr_emerg("M7_MDP4_PRE_VM_MMIO_BEGIN\n");
 	mdp4_write(mdp4_kms, REG_MDP4_DTV_ENABLE, 0);
 	mdp4_write(mdp4_kms, REG_MDP4_LCDC_ENABLE, 0);
 	mdp4_write(mdp4_kms, REG_MDP4_DSI_ENABLE, 0);
+	pr_emerg("M7_MDP4_PRE_VM_MMIO_DONE\n");
 	mdp4_disable(mdp4_kms);
+	pr_emerg("M7_MDP4_PRE_VM_CLOCKS_DONE\n");
 	mdelay(16);
 
+	pr_emerg("M7_MDP4_VM_INIT_BEGIN\n");
 	vm = msm_kms_init_vm(mdp4_kms->dev, NULL);
 	if (IS_ERR(vm)) {
 		ret = PTR_ERR(vm);
+		pr_emerg("M7_MDP4_VM_INIT_FAIL %d\n", ret);
 		DRM_DEV_ERROR(dev->dev, "failed to initialize VM: %d\n", ret);
 		goto fail;
 	}
 
 	kms->vm = vm;
+	pr_emerg("M7_MDP4_VM_INIT_DONE\n");
 
+	pr_emerg("M7_MDP4_MODESET_BEGIN\n");
 	ret = modeset_init(mdp4_kms);
 	if (ret) {
+		pr_emerg("M7_MDP4_MODESET_FAIL %d\n", ret);
 		DRM_DEV_ERROR(dev->dev, "modeset_init failed: %d\n", ret);
 		goto fail;
 	}
+	pr_emerg("M7_MDP4_MODESET_DONE\n");
 
+	pr_emerg("M7_MDP4_CURSOR_ALLOC_BEGIN\n");
 	mdp4_kms->blank_cursor_bo = msm_gem_new(dev, SZ_16K, MSM_BO_WC | MSM_BO_SCANOUT);
 	if (IS_ERR(mdp4_kms->blank_cursor_bo)) {
 		ret = PTR_ERR(mdp4_kms->blank_cursor_bo);
+		pr_emerg("M7_MDP4_CURSOR_ALLOC_FAIL %d\n", ret);
 		DRM_DEV_ERROR(dev->dev, "could not allocate blank-cursor bo: %d\n", ret);
 		mdp4_kms->blank_cursor_bo = NULL;
 		goto fail;
 	}
 
+	pr_emerg("M7_MDP4_CURSOR_PIN_BEGIN\n");
 	ret = msm_gem_get_and_pin_iova(mdp4_kms->blank_cursor_bo, kms->vm,
 			&mdp4_kms->blank_cursor_iova);
 	if (ret) {
+		pr_emerg("M7_MDP4_CURSOR_PIN_FAIL %d\n", ret);
 		DRM_DEV_ERROR(dev->dev, "could not pin blank-cursor bo: %d\n", ret);
 		goto fail;
 	}
+	pr_emerg("M7_MDP4_KMS_INIT_DONE\n");
 
 	dev->mode_config.min_width = 0;
 	dev->mode_config.min_height = 0;

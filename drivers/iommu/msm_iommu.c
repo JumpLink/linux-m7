@@ -126,8 +126,11 @@ static void __flush_iotlb(void *cookie)
 		if (ret)
 			goto fail;
 
-		list_for_each_entry(master, &iommu->ctx_list, list)
+		list_for_each_entry(master, &iommu->ctx_list, list) {
+			if (master->num < 0)
+				continue;
 			SET_CTX_TLBIALL(iommu->base, master->num, 0);
+		}
 
 		__disable_clocks(iommu);
 	}
@@ -150,6 +153,9 @@ static void __flush_iotlb_range(unsigned long iova, size_t size,
 			goto fail;
 
 		list_for_each_entry(master, &iommu->ctx_list, list) {
+			if (master->num < 0)
+				continue;
+
 			temp_size = size;
 			do {
 				iova &= TLBIVA_VA;
@@ -330,8 +336,10 @@ static void msm_iommu_domain_free(struct iommu_domain *domain)
 	struct msm_priv *priv;
 	unsigned long flags;
 
-	spin_lock_irqsave(&msm_iommu_lock, flags);
 	priv = to_msm_priv(domain);
+	free_io_pgtable_ops(priv->iop);
+
+	spin_lock_irqsave(&msm_iommu_lock, flags);
 	kfree(priv);
 	spin_unlock_irqrestore(&msm_iommu_lock, flags);
 }
@@ -402,14 +410,24 @@ static struct iommu_device *msm_iommu_probe_device(struct device *dev)
 static int msm_iommu_attach_dev(struct iommu_domain *domain, struct device *dev,
 				struct iommu_domain *old)
 {
-	int ret = 0;
+	int ret = 0, cleanup_ret;
 	unsigned long flags;
-	struct msm_iommu_dev *iommu;
+	struct msm_iommu_dev *iommu, *tmp;
 	struct msm_priv *priv = to_msm_priv(domain);
 	struct msm_iommu_ctx_dev *master;
 
-	priv->dev = dev;
-	msm_iommu_domain_config(priv);
+	if (old == domain)
+		return 0;
+
+	/* A domain can be restored after a failed attach without reallocating it. */
+	if (!priv->iop) {
+		priv->dev = dev;
+		ret = msm_iommu_domain_config(priv);
+		if (ret) {
+			dev_err(dev, "failed to configure IOMMU domain: %d\n", ret);
+			return ret;
+		}
+	}
 
 	spin_lock_irqsave(&msm_iommu_lock, flags);
 	list_for_each_entry(iommu, &qcom_iommu_devices, dev_node) {
@@ -417,11 +435,7 @@ static int msm_iommu_attach_dev(struct iommu_domain *domain, struct device *dev,
 		if (!master)
 			continue;
 
-		ret = __enable_clocks(iommu);
-		if (ret)
-			goto fail;
-
-		if (master->num) {
+		if (master->num >= 0) {
 			dev_err(dev, "domain already attached");
 			ret = -EEXIST;
 			goto fail;
@@ -429,7 +443,14 @@ static int msm_iommu_attach_dev(struct iommu_domain *domain, struct device *dev,
 		master->num = msm_iommu_alloc_ctx(iommu->context_map,
 						  0, iommu->ncb);
 		if (IS_ERR_VALUE(master->num)) {
-			ret = -ENODEV;
+			ret = master->num;
+			goto fail;
+		}
+
+		ret = __enable_clocks(iommu);
+		if (ret) {
+			msm_iommu_free_ctx(iommu->context_map, master->num);
+			master->num = -1;
 			goto fail;
 		}
 		config_mids(iommu, master);
@@ -438,7 +459,29 @@ static int msm_iommu_attach_dev(struct iommu_domain *domain, struct device *dev,
 		list_add(&iommu->dom_node, &priv->list_attached);
 	}
 
+	goto out;
+
 fail:
+	list_for_each_entry_safe(iommu, tmp, &priv->list_attached, dom_node) {
+		master = find_master_for_dev(iommu, dev);
+		if (!master || master->num < 0)
+			continue;
+
+		cleanup_ret = __enable_clocks(iommu);
+		if (cleanup_ret) {
+			dev_err(dev, "failed to enable IOMMU clocks during cleanup: %d\n",
+				cleanup_ret);
+		} else {
+			__reset_context(iommu->base, master->num);
+		}
+
+		msm_iommu_free_ctx(iommu->context_map, master->num);
+		master->num = -1;
+		if (!cleanup_ret)
+			__disable_clocks(iommu);
+		list_del(&iommu->dom_node);
+	}
+out:
 	spin_unlock_irqrestore(&msm_iommu_lock, flags);
 
 	return ret;
@@ -450,7 +493,7 @@ static int msm_iommu_identity_attach(struct iommu_domain *identity_domain,
 {
 	struct msm_priv *priv;
 	unsigned long flags;
-	struct msm_iommu_dev *iommu;
+	struct msm_iommu_dev *iommu, *tmp;
 	struct msm_iommu_ctx_dev *master;
 	int ret = 0;
 
@@ -458,19 +501,22 @@ static int msm_iommu_identity_attach(struct iommu_domain *identity_domain,
 		return 0;
 
 	priv = to_msm_priv(old);
-	free_io_pgtable_ops(priv->iop);
 
 	spin_lock_irqsave(&msm_iommu_lock, flags);
-	list_for_each_entry(iommu, &priv->list_attached, dom_node) {
+	list_for_each_entry_safe(iommu, tmp, &priv->list_attached, dom_node) {
+		master = find_master_for_dev(iommu, dev);
+		if (!master || master->num < 0)
+			continue;
+
 		ret = __enable_clocks(iommu);
 		if (ret)
 			goto fail;
 
-		list_for_each_entry(master, &iommu->ctx_list, list) {
-			msm_iommu_free_ctx(iommu->context_map, master->num);
-			__reset_context(iommu->base, master->num);
-		}
+		msm_iommu_free_ctx(iommu->context_map, master->num);
+		__reset_context(iommu->base, master->num);
+		master->num = -1;
 		__disable_clocks(iommu);
+		list_del(&iommu->dom_node);
 	}
 fail:
 	spin_unlock_irqrestore(&msm_iommu_lock, flags);
@@ -539,15 +585,17 @@ static phys_addr_t msm_iommu_iova_to_phys(struct iommu_domain *domain,
 	spin_lock_irqsave(&msm_iommu_lock, flags);
 
 	priv = to_msm_priv(domain);
-	iommu = list_first_entry(&priv->list_attached,
-				 struct msm_iommu_dev, dom_node);
-
-	if (list_empty(&iommu->ctx_list))
+	if (list_empty(&priv->list_attached))
 		goto fail;
 
-	master = list_first_entry(&iommu->ctx_list,
-				  struct msm_iommu_ctx_dev, list);
-	if (!master)
+	/* Every attached context uses this domain's page table. */
+	iommu = list_first_entry(&priv->list_attached,
+				 struct msm_iommu_dev, dom_node);
+	list_for_each_entry(master, &iommu->ctx_list, list) {
+		if (master->num >= 0)
+			break;
+	}
+	if (&master->list == &iommu->ctx_list)
 		goto fail;
 
 	ret = __enable_clocks(iommu);
@@ -618,6 +666,7 @@ static int insert_iommu_master(struct device *dev,
 		return -ENOMEM;
 	}
 	master->of_node = dev->of_node;
+	master->num = -1;
 	list_add(&master->list, &(*iommu)->ctx_list);
 
 found:

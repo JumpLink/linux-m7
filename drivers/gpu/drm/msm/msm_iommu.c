@@ -9,6 +9,7 @@
 #include <linux/kmemleak.h>
 
 #if IS_ENABLED(CONFIG_ARM_DMA_USE_IOMMU)
+#include <linux/dma-map-ops.h>
 #include <asm/dma-iommu.h>
 #endif
 
@@ -743,6 +744,12 @@ struct msm_mmu *msm_iommu_new(struct device *dev, unsigned long quirks)
 	if (to_dma_iommu_mapping(dev)) {
 		struct dma_iommu_mapping *mapping = to_dma_iommu_mapping(dev);
 
+		/*
+		 * Detaching frees the old domain's page tables. Keep their DMA
+		 * cleanup on the direct ops, rather than recursively unmapping
+		 * physical table addresses through the domain being destroyed.
+		 */
+		set_dma_ops(dev, NULL);
 		arm_iommu_detach_device(dev);
 		arm_iommu_release_mapping(mapping);
 	}

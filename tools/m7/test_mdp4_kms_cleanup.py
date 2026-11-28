@@ -62,6 +62,17 @@ class MsmIommuOwnershipTest(unittest.TestCase):
             attach.index("iommu_attach_device(iommu->domain, dev);"),
         )
 
+    def test_legacy_dma_ops_are_disabled_before_domain_detach(self):
+        source = MSM_IOMMU.read_text()
+        attach = function_body(source, r"struct msm_mmu \*msm_iommu_new")
+
+        self.assertIn("#include <linux/dma-map-ops.h>", source)
+        self.assertIn("set_dma_ops(dev, NULL);", attach)
+        self.assertLess(
+            attach.index("set_dma_ops(dev, NULL);"),
+            attach.index("arm_iommu_detach_device(dev);"),
+        )
+
     def test_attach_failure_reports_its_errno(self):
         attach = function_body(MSM_IOMMU.read_text(), r"struct msm_mmu \*msm_iommu_new")
 

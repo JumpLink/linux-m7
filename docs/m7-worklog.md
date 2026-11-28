@@ -1262,6 +1262,53 @@ and the changed driver object builds with GCC 16. Probe 116 will test this fix
 on hardware; visible physical-panel output remains the display acceptance
 criterion.
 
+### 2026-11-28: Preserve Probe 116 Pstore and fix DMA teardown
+
+The lease-protected Probe 116 run built from clean `e6d140215`, wrote only
+`boot`, and completed fastboot flash and reboot. The phone never produced serial
+bytes and disappeared from USB. The run manifest records `ready=false`,
+`capture_returncode=1` and an empty probe.
+
+After a physical HBOOT/TWRP selection, TWRP was reachable but its kernel rejected
+the RAM reader. Restoring known-good Probe 109 returned a stable ACM shell with a
+complete late host probe and `M7_WLAN_PRESENT=yes`. The fixed 1 MiB reader was
+then uploaded over that shell. The dump at `0x86000000` transferred completely
+and matched its device-side SHA-256,
+`08581b1ca6bd2d8b7dd48e977db603458ee2a2eb168e38228c56d47b5a25fc81`.
+Pstore contains one valid zlib `dmesg-0` zone from `7.1.0-ge6d140215eac`.
+
+The log reaches `MDP4 version v4.4` at 0.717423. At 0.734000,
+`__arm_v7s_unmap()` warns about an invalid PTE. At 0.737516 the kernel oopses in
+`__bitmap_clear()`. The call trace is:
+
+```text
+__bitmap_clear
+arm_iommu_unmap_phys
+dma_unmap_phys
+__arm_v7s_free_table
+arm_v7s_free_pgtable
+msm_iommu_identity_attach
+__iommu_group_set_domain_internal
+iommu_detach_device
+arm_iommu_detach_device
+msm_iommu_new
+```
+
+`arm_iommu_detach_device()` detached the legacy paging domain while the device
+still had the legacy IOMMU DMA ops and `archdata.mapping` pointed at that same
+domain. Freeing an old page table calls `dma_unmap_single()` with its physical
+address. The legacy IOMMU ops interpreted that physical address as an IOVA and
+recursively unmapped it from the domain being destroyed. The recursive unmap
+consumed an invalid PTE and then indexed a bitmap that had never been allocated.
+
+The follow-up fix selects the architecture's direct DMA ops before calling
+`arm_iommu_detach_device()`. Page-table cleanup therefore uses the physical
+address directly and never re-enters the old IOMMU domain. The existing MDP4 test
+module now guards the include and the DMA-ops-before-detach order. All 77 Python
+tests pass, strict checkpatch reports no errors or warnings, and the changed
+driver object builds with GCC 16. Probe 117 must validate this on hardware before
+any further display conclusion; visible physical-panel output remains required.
+
 See also:
 
 - `docs/m7-upstream-candidates.md`

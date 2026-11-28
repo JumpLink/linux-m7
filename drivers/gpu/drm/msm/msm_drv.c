@@ -1079,6 +1079,14 @@ int msm_drv_probe(struct device *master_dev,
 			return ret;
 	}
 
+	if (IS_ERR(match))
+		return PTR_ERR(match);
+
+	/* The component core requires a non-NULL match list. */
+	if (!match)
+		return dev_err_probe(master_dev, -ENODEV,
+				     "no display or GPU components found\n");
+
 	/* on all devices that I am aware of, iommu's which can map
 	 * any address the cpu can see are used:
 	 */

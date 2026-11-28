@@ -30,6 +30,7 @@ not duplicated in this public repository; the workspace maps roles to models in
 | 2026-11-27 | main implementation session | KOSTENLOS / public | Trace the SDIO receive corruption with Probes 107 and 108 | Completed; bad headers carry the device MAC shifted by one byte and every transfer falls back to PIO at 1 MHz |
 | 2026-11-28 | main implementation session | KOSTENLOS / public | Test the PIO FIFO-drain theory with Probe 109 | Completed; FIFO drains cleanly, short reads show RXACTIVE without RXDATAAVLBL, so the 1 MHz clock is too slow |
 | 2026-11-28 | main implementation session | KOSTENLOS / public | Build and test Probe 113 MDP4/DSI0 host bring-up | Completed; stable ACM boot, DSI/PHY/MDP4 bound, late full probe reports WLAN present; DRM card awaits a panel |
+| 2026-11-28 | main implementation session | KOSTENLOS / public | Prepare Probe 114 M7 command-mode panel | Completed; corrected PMIC boost pins, deferred revision-specific backlight, 64 tests and both DTBs pass; hardware test pending |
 
 Failed agent runs are kept in the log so a later reader does not mistake a
 missing report for missing work.

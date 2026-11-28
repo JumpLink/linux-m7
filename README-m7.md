@@ -38,6 +38,13 @@ while the frame is still active, so the PIO loop exits early. DMA is disabled by
 design for these small transfers and the FIFO drains cleanly, so a higher clock
 is the next test.
 
+Probe 113 binds `4700000.dsi`, `4700200.phy` and
+`5100000.display-controller`; its complete late host probe reports
+`M7_WLAN_PRESENT=yes`. Probe 114 adds the JDI/Samsung command-mode panel and the
+MDP4 command-interface selection. Its backlight stays off until the HTC
+revision-specific PWM sequence is ported, so a successful host boot alone does
+not yet count as visible display output.
+
 Probes 91 and 92 isolated the old failure to OOB delivery. Active-high selection
 reached the chip as `SEPINT=0x07`, and removing the GPIO 38 pull did not help.
 Both runs left response data in the device mailbox without an OOB interrupt.

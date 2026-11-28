@@ -1136,6 +1136,34 @@ output port, so the panel-less aggregate cannot finish binding. The next probe
 adds the minimal JDI panel node and driver; the host/PHY bring-up itself no
 longer crashes.
 
+### 2026-11-28: Prepare Probe 114 with the M7 command-mode panel
+
+Probe 114 adds the first panel above the working MDP4/DSI0 host path. The MDP4
+encoder now selects `INTF_DSI_CMD` when DSI0 is in command mode and keeps video
+mode as the default. A dedicated `htc,m7ul-panel` driver carries the 1080x1920
+JDI/Samsung timings, four-lane RGB888 setup, reset, boost, XO pulse and the
+minimal DCS sequence. The first sequence sends exit-sleep, waits 120 ms, enables
+the DCS brightness block at `0xff`, then sends display-on. Gamma tables remain
+out of this probe.
+
+The board uses L2 and LVS5 for the panel, LVS7 for PHY VDDIO, TLMM GPIO 31 for
+active-low reset and TLMM GPIO 86 for `BL_HW_EN`. HTC's downstream constants map
+positive boost to PM8921 GPIO 37 and negative boost to GPIO 36. The first draft
+had those two PMIC pins swapped; the compiled DTB now matches downstream.
+
+The generic LM3630A driver is not used in Probe 114. HTC reads revision register
+`0x1f` and programs different boost, current and control values for each PWM IC
+revision. Mainline's generic probe writes its own values before the panel has
+established the HWEN state. Probe 114 therefore leaves GSBI2 disabled and holds
+GPIO 86 low. A revision-aware backlight driver is the next display step after
+the DSI command path is proven.
+
+Validation before the hardware run: 64 Python tests pass, strict checkpatch
+reports no errors or warnings, the panel binding example validates, and both
+normal and diagnostic DTBs compile. The compiled panel node has the reciprocal
+DSI0 endpoint, XO clock, GPIO 31/86, GPIO 37/36 and L2/LVS5 supplies. The binding
+check still prints existing meta-schema warnings from unrelated bindings.
+
 See also:
 
 - `docs/m7-upstream-candidates.md`
